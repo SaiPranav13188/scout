@@ -25,3 +25,9 @@ apps/web/next-env.d.ts
 
 # Personal spec (name, college, CGPA): kept private
 JOB_HUNTER_PROJECT.md
+
+# Google OAuth client and Gmail samples: never public
+gmail_client.json
+client_secret*.json
+.devdata/
+private/
