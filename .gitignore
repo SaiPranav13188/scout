@@ -1,0 +1,27 @@
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+apps/web/.env.local
+
+# Local data (embedded Postgres, raw payload files)
+.devdata/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node / Next
+node_modules/
+apps/web/.next/
+apps/web/next-env.d.ts
+*.tsbuildinfo
+
+.DS_Store
+
+# Personal spec (name, college, CGPA): kept private
+JOB_HUNTER_PROJECT.md

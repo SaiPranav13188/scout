@@ -1,0 +1,83 @@
+# Evaluation results
+
+Honest numbers only. Where a metric needs data that doesn't exist yet (your labels, Gmail samples), it says so.
+
+Last updated: 2026-11-06 (Phase 1).
+
+---
+
+## 1. Fresher filter (spec §13.2)
+
+### Rule tests
+All tricky cases from the spec pass as unit tests (`packages/shared/tests/test_fresher.py`):
+`"Associate"` (kept unless senior/director), `"0-2 years"` (dropped), `"1-3 years"` (dropped),
+`"2-4 years"` (dropped), `"fresher preferred"` (kept), `"0-1 years"` (kept), plus `1+`, `2+`, `3+`, `5+`,
+"minimum 2 years", "at least 3 years", word numbers, month ranges, soft requirements ("3+ years is a plus"),
+mixed SDE-1/SDE-2 postings, company-history numbers ("growth over the last 10+ years"), level-2/3 titles,
+and internships with and without PPO. **44 tests, 44 passing.**
+
+### Real-data run
+Real public postings from 213 company boards (YC companies discovered on 2026-11-06), re-evaluated with the
+final Phase 1 code (`scripts/eval_raw.py`):
+
+| | Jobs |
+|---|---|
+| Unique postings | 3,593 |
+| Dropped: senior/lead/manager/level-2+ title | 1,830 |
+| Dropped: states more experience than allowed | 938 |
+| Dropped: location not workable from India | 794 |
+| Dropped: internship without conversion | 3 |
+| **Kept** | **28** |
+| Kept and relevant to target roles (shown in feed by default) | 5 |
+
+Location buckets across all 3,593: abroad 2,482 · remote but restricted to another country 936 ·
+India 103 · remote worldwide 72.
+
+### Errors found by manual review and fixed
+Reviewing samples of the real run found these mistakes. Each now has a regression test:
+
+| Error | Cause | Fix |
+|---|---|---|
+| Sales role dropped for "10+ years" | company history ("growth over the last 10+ years") read as a requirement | ignore numbers preceded by "over the last / for the past / since" |
+| "SDE 2 Infra" kept | level-2 titles not treated as senior | `ii`, `sde 2`, `engineer 2`, `l2`… added to drop words |
+| China-based remote job shown as "worldwide remote" | only a fixed list of foreign regions was checked | any named non-India place on a remote job now means "restricted" |
+| US-only remote jobs shown as worldwide | restriction stated only in the description | description checked for "must be based in / authorized to work in …" |
+
+### Not measured yet
+**Precision and recall against your judgement.** This needs the 30-50 jobs you label in Phase 3
+(apply / maybe / no). Until then, the numbers above show what the filter *does*, not how often it agrees with you.
+
+## 2. Dedupe (spec §13.3)
+
+- Unit tests: same posting via two sources (tracking params, `/apply` suffix, both Greenhouse hosts) collapses
+  to one; reposts under a new ID collapse to the earliest; different city or company stays separate; seniority
+  differences never merge. All passing.
+- Database tests: re-ingesting the same real board twice adds 0 rows; a skipped job's repost does not resurface.
+- Real run: 119 of 3,593 postings marked duplicate. Mostly the same role posted once per US state or city.
+- Error found and fixed: "SDE 2 Infra" was merged into "Data Engineer (SDE 2)" (a lenient "contains" match).
+  Matching now uses word-order-tolerant similarity ≥ 95 with identical seniority words.
+
+## 3. Freshness (spec §13.4)
+
+- ATS jobs are verified by being listed on the live board at each sync; a job that disappears is marked closed
+  (`mark_missing_closed`, tested).
+- `posted_at` records how reliable it is: `published` (Greenhouse first_published, Ashby publishedAt), `created`
+  (Lever) or `updated` (Greenhouse fallback). The UI says which.
+- Not measured yet: posted-time accuracy against a manual check.
+
+## 4. Company trust check
+
+- Real run, before fixes: 19 of 3,593 legitimate postings were flagged (9 "scam risk", 10 "caution").
+  Causes: "post-training **fee**dback", "**covered** exam and application fees" (a benefit), and a product
+  that "replies to WhatsApp messages".
+- After fixes: **0 of 3,593** legitimate postings flagged. Synthetic scam texts (fees, deposits, "send CV on
+  WhatsApp", guaranteed jobs) are still caught. All of these are tests.
+- Caveat: every posting in this run came from a real company's own job board, so this measures false alarms,
+  not detection on real scams. That needs the aggregator and email sources (Phase 2), where scams actually appear.
+
+## 5-9. Later phases
+
+Resume factual accuracy, resume format, alert parsers, reliability under worker/Redis crashes, and
+prompt injection are measured in Phases 2-5. Phase 1 already tests: digests are never sent twice (including
+after a failed send and retry), finished schedule slots never re-run, and a slot that failed 3 times waits for
+the next one.

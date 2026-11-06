@@ -1,0 +1,63 @@
+[project]
+name = "scout"
+version = "0.1.0"
+description = "Personal AI job hunter (workspace root)"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/shared", "apps/api", "apps/worker"]
+
+[tool.uv.sources]
+scout-core = { workspace = true }
+scout-api = { workspace = true }
+scout-worker = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "scout-core",
+    "scout-api",
+    "scout-worker",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+    "pytest-httpserver>=1.1",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "pgserver>=0.1.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S", "SIM"]
+ignore = ["S101", "S311", "E501"]  # long lines: readability over wrapping
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Body", "fastapi.Query", "fastapi.Header"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["scout_core", "scout_api", "scout_worker"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "E501"]
+"conftest.py" = ["S603"]  # runs our own scripts/devdb.py
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["packages/shared/tests", "apps/api/tests", "apps/worker/tests"]
+markers = [
+    "db: needs a running Postgres (DATABASE_URL); skipped otherwise",
+    "network: hits the real internet; skipped unless SCOUT_NETWORK_TESTS=1",
+]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = true

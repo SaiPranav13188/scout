@@ -1,0 +1,36 @@
+# Every ~10 minutes: check company job boards, send instant alerts, and run any due digest.
+# Schedules come from the `settings` table, so changing them in the dashboard needs no edit here.
+name: Scout tick
+on:
+  schedule:
+    # Off the top of the hour, when GitHub's scheduler is busiest (runs can still be delayed).
+    - cron: "4,14,24,34,44,54 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: scout-tick
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ENV: production
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+      MONGO_URL: ${{ secrets.MONGO_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --package scout-worker
+      - run: uv run --package scout-worker python -m scout_worker.cli tick --skip discovery

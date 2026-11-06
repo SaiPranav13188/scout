@@ -1,0 +1,18 @@
+[project]
+name = "scout-api"
+version = "0.1.0"
+description = "Scout FastAPI backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "scout-core",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pyjwt[crypto]>=2.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scout_api"]

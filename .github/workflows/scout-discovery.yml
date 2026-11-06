@@ -1,0 +1,30 @@
+# Weekly: find new companies and their job boards (about 25 minutes for 800 companies).
+name: Scout discovery
+on:
+  schedule:
+    - cron: "40 21 * * 6"   # Saturday 21:40 UTC = Sunday 03:10 IST
+  workflow_dispatch:
+
+concurrency:
+  group: scout-discovery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ENV: production
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --package scout-worker
+      - run: uv run --package scout-worker python -m scout_worker.cli tick --only discovery

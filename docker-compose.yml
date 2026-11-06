@@ -1,0 +1,76 @@
+# Local stack: Postgres (+pgvector), Redis, Mongo, API, worker, beat.
+# Usage: cp .env.example .env && docker compose up --build
+# The dashboard runs separately: cd apps/web && npm run dev
+name: scout
+
+x-python: &python
+  build:
+    context: .
+    dockerfile: infra/docker/python.Dockerfile
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+asyncpg://scout:scout@postgres:5432/scout
+    REDIS_URL: redis://redis:6379/0
+    MONGO_URL: mongodb://mongo:27017
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    mongo: { condition: service_started }
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: scout
+      POSTGRES_PASSWORD: scout
+      POSTGRES_DB: scout
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scout"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    volumes: [mongodata:/data/db]
+
+  migrate:
+    <<: *python
+    restart: "no"
+    working_dir: /app/packages/shared
+    command: ["alembic", "upgrade", "head"]
+
+  api:
+    <<: *python
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    <<: *python
+    command: ["celery", "-A", "scout_worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  beat:
+    <<: *python
+    # Exactly one beat process. It only fires the 1-minute tick; schedules live in Postgres.
+    command: ["celery", "-A", "scout_worker.celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+  redisdata:
+  mongodata:
