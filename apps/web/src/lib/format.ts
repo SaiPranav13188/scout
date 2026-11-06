@@ -41,7 +41,10 @@ export const SOURCE_LABEL: Record<string, string> = {
   lever: "Lever",
   ashby: "Ashby",
   adzuna: "Adzuna",
-  gmail: "Email alert",
+  linkedin_alert: "LinkedIn alert",
+  wellfound_alert: "Wellfound alert",
+  internshala_alert: "Internshala alert",
+  instahyre_alert: "Instahyre alert",
 }
 
 export const TRUST_META: Record<TrustLevel, { label: string; tone: string; hint: string }> = {

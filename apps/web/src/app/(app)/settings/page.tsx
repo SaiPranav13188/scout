@@ -12,6 +12,10 @@ import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import { keys } from "@/lib/queries"
 
+const SOURCE_NAMES: Record<string, string> = {
+  greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", gmail_alerts: "Gmail job alerts", adzuna: "Adzuna",
+}
+
 type Settings = {
   schedule: Record<string, string | number>
   notifications: { digest_size: number; quiet_hours: { start: string; end: string } } & Record<string, unknown>
@@ -103,9 +107,12 @@ export default function SettingsPage() {
           </Row>
         </Card>
 
-        <Card icon={Plug} title="Sources" description="Each source is a plug-in. Gmail alerts and aggregators arrive in Phase 2.">
+        <Card icon={Plug} title="Sources" description="Each source is a plug-in you can switch off.">
           {Object.entries(data.sources).map(([k, v]) => (
-            <Row key={k} label={k[0].toUpperCase() + k.slice(1)} hint={k === "adzuna" ? "Needs an Adzuna API key in the server environment." : "Public company job boards."}>
+            <Row key={k} label={SOURCE_NAMES[k] ?? k}
+              hint={k === "adzuna" ? "Needs an Adzuna API key in the server environment."
+                : k === "gmail_alerts" ? "Job-alert emails from LinkedIn, Wellfound, Internshala and Instahyre (read-only)."
+                : "Public company job boards."}>
               <Switch checked={v} onCheckedChange={(nv) => set("sources", { ...data.sources, [k]: nv })} />
             </Row>
           ))}
