@@ -474,50 +474,84 @@ async def save_master_resume(path: str) -> dict:
         return {"version": row.version, "fact_check": check, "usage": llm.usage.by_call}
 
 
+async def _with_db_retry(fn, attempts: int = 3):
+    """Run fn(session) in a fresh session, retrying when the database connection drops."""
+    from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+
+    for attempt in range(attempts):
+        try:
+            async with worker_session() as s:
+                return await fn(s)
+        except (DBAPIError, InterfaceError, OperationalError, ConnectionError) as exc:
+            if attempt == attempts - 1:
+                raise
+            log.info("db.retry", attempt=attempt + 1, error=str(exc)[:120])
+            await asyncio.sleep(2 * (attempt + 1))
+
+
 async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
-    """Score feed jobs that have no score yet against the active master resume."""
+    """Score feed jobs that have no score yet against the active master resume.
+
+    No database connection is held while waiting for Gemini: reads happen in one short session,
+    and each score is saved in its own fresh session (with retries if the connection drops).
+    """
     from scout_core.db.models import JobScore, MasterResume
     from scout_core.llm import Gemini, LLMError, LLMNotConfigured
     from scout_core.matching import PROMPT_VERSION, Weights, profile_text, score_job
     from scout_core.resume import ResumeData
 
-    async with worker_session() as session:
+    async def load(session):
         master = await session.scalar(select(MasterResume).where(MasterResume.is_active.is_(True)))
         if master is None:
-            return {"skipped": "no_master_resume"}
-        try:
-            llm = Gemini.from_settings()
-        except LLMNotConfigured:
-            return {"skipped": "gemini_not_configured"}
+            return None
+        cfg = await get_setting(session, "matching")
+        scored = select(JobScore.job_id).where(JobScore.prompt_version == PROMPT_VERSION)
+        jobs = (await session.execute(visible_feed_query().where(
+            Job.status == ApplicationStatus.DISCOVERED, Job.id.not_in(scored))
+            .order_by(Job.first_seen_at.desc()).limit(limit)
+            .with_only_columns(Job.id, Job.title, Job.company_name, Job.location, Job.description))).all()
+        return master.parsed, cfg, [tuple(j) for j in jobs]
+
+    if slot_key and not slot_key.startswith("manual:"):
+        async def per_run(s):
+            return int((await get_setting(s, "matching")).get("jobs_per_run", limit))
+        limit = await _with_db_retry(per_run)
+    loaded = await _with_db_retry(load)
+    if loaded is None:
+        return {"skipped": "no_master_resume"}
+    parsed, cfg, jobs = loaded
+    try:
+        llm = Gemini.from_settings()
+    except LLMNotConfigured:
+        return {"skipped": "gemini_not_configured"}
 
     async with worker_session() as session, track_run(session, "scoring", slot_key) as run:
-        resume = ResumeData.model_validate({k: v for k, v in master.parsed.items() if k in ResumeData.model_fields})
-        cfg = await get_setting(session, "matching")
+        resume = ResumeData.model_validate({k: v for k, v in parsed.items() if k in ResumeData.model_fields})
         weights = Weights(**cfg.get("weights", {}))
         targets = cfg.get("target_roles", [])
-        resume_vec = (await llm.embed([profile_text(resume, targets)], purpose="embed_profile"))[0]
-        scored = select(JobScore.job_id).where(JobScore.prompt_version == PROMPT_VERSION)
-        jobs = (await session.scalars(visible_feed_query().where(
-            Job.status == ApplicationStatus.DISCOVERED, Job.id.not_in(scored))
-            .order_by(Job.first_seen_at.desc()).limit(limit))).all()
         run.inc("to_score", len(jobs))
-        for job in jobs:
+        if jobs:
+            resume_vec = (await llm.embed([profile_text(resume, targets)], purpose="embed_profile"))[0]
+        for job_id, title, company, location, description in jobs:
             try:
-                r = await score_job(llm, resume=resume, resume_vec=resume_vec, targets=targets,
-                                    title=job.title, company=job.company_name, location=job.location,
-                                    description=job.description, weights=weights)
+                r = await score_job(llm, resume=resume, resume_vec=resume_vec, targets=targets, title=title,
+                                    company=company, location=location, description=description, weights=weights)
             except LLMError as exc:
-                run.error(f"{job.title[:40]}: {exc}"[:300])
+                run.error(f"{title[:40]}: {exc}"[:300])
                 if "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc):
                     break  # out of free quota for now; the next run continues
                 continue
-            session.add(JobScore(job_id=job.id, score=r.score, breakdown=r.breakdown, reasons=r.reasons,
-                                 matched_skills=r.matched_skills, missing_skills=r.missing_skills,
-                                 red_flags=r.red_flags, model=llm.usage.by_call[-1]["model"],
-                                 prompt_version=PROMPT_VERSION))
-            job.required_skills = r.assessment.required_skills
-            job.preferred_skills = r.assessment.preferred_skills
-            await session.commit()
+
+            async def save(s, job_id=job_id, r=r):
+                s.add(JobScore(job_id=job_id, score=r.score, breakdown=r.breakdown, reasons=r.reasons,
+                               matched_skills=r.matched_skills, missing_skills=r.missing_skills,
+                               red_flags=r.red_flags, model=llm.usage.by_call[-1]["model"],
+                               prompt_version=PROMPT_VERSION))
+                await s.execute(update(Job).where(Job.id == job_id).values(
+                    required_skills=r.assessment.required_skills, preferred_skills=r.assessment.preferred_skills))
+                await s.commit()
+
+            await _with_db_retry(save)
             run.inc("scored")
         run.inc("llm_calls", llm.usage.calls)
         run.inc("llm_input_tokens", llm.usage.input_tokens)

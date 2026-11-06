@@ -94,6 +94,8 @@ class Gemini:
             except Exception as exc:  # noqa: BLE001 - classified below
                 code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
                 retryable = code in (429, 500, 502, 503, 504) or "RESOURCE_EXHAUSTED" in str(exc)
+                if "PerDay" in str(exc) or "per day" in str(exc).lower():
+                    retryable = False  # a daily quota won't recover by waiting; let the caller fall back
                 if not retryable or attempt == attempts - 1:
                     raise LLMError(f"{what} failed: {type(exc).__name__}: {str(exc)[:300]}") from exc
                 delay = min(60.0, 4 * 2 ** attempt + random.random())

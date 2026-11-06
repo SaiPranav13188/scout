@@ -22,7 +22,7 @@ Last updated: 2026-11-06
 | API: Supabase JWT (JWKS) auth, owner-only, rate limit, audit log | tests with real ES256 tokens (expired, wrong issuer, wrong user rejected) |
 | Dashboard: Today feed, details panel, ⌘K palette, keyboard shortcuts, undo, swipe, Startups, Saved searches, Agent health, Settings, login | lint + typecheck + production build pass; screenshots reviewed desktop + mobile; 0 console errors |
 
-**Test totals:** 223 Python tests passing, `ruff` clean, web lint/typecheck/build clean.
+**Test totals:** 240 Python tests passing, `ruff` clean, web lint/typecheck/build clean.
 
 ### Not done / not verified yet (honest list)
 
@@ -82,7 +82,23 @@ companies use Keka, Zoho Recruit or Darwinbox, which have no documented public j
 | Cloud Gmail runs | waiting for the ENCRYPTION_KEY GitHub secret (adding it was blocked by Claude Code's safety rules; command given to the user) |
 | Aggregator APIs (Adzuna etc.) | not started |
 
-## Phase 3: Resume parsing + matching (not started)
+## Phase 3: Resume parsing + matching (in progress)
+
+| Item | Status |
+|---|---|
+| Gemini provider (structured JSON, untrusted-data wrapping, injection detection, retries, per-model fallback) | done; models chosen from the live model list for this key |
+| Master resume v1: PDF text, contact details redacted locally, Gemini structuring, plain-code fact check | done; 41 skills, 3 projects, 0 unsupported items |
+| Match score (skills overlap + embeddings + Gemini rubric), shown in dashboard, Best-fit sort, Telegram | done; 33 jobs scored so far |
+| Labelling (apply/maybe/no) for the eval set | UI live; waiting for ~40 labels |
+| Eval: precision/recall vs labels | not started (needs labels) |
+| Resume review/edit UI | not started |
+| Cloud scoring | waiting for GEMINI_API_KEY GitHub secret |
+
+**Found while running it:** the free tier has a daily request limit per model (gemini-3.5-flash hit it after
+~60 calls); gemini-3.8-flash was often overloaded (503); the SDK's hidden retries turned one call into ~9
+minutes (now off). LinkedIn alert jobs are title-only, so their scores (43-60) are rough; jobs with full
+descriptions score far more meaningfully.
+
 ## Phase 4: Tailoring + validation (not started)
 ## Phase 4b: Autofill Chrome extension (added by you on 2026-11-06; not started)
 ## Phase 5: Tracker, follow-ups, health, polish (not started)

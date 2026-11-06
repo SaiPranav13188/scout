@@ -44,6 +44,7 @@ DEFAULTS: dict[str, Any] = {
     "relevance_rules": asdict(RelevanceRules()),
     "preferences": asdict(Preferences()),
     "matching": {
+        "jobs_per_run": 10,  # free-tier friendly: about 60 jobs/hour on the 10-minute schedule
         "weights": {"skills": 0.35, "embedding": 0.25, "rubric": 0.40},
         "bands": {"top": 85, "good": 70, "stretch": 55},
         "target_roles": ["Applied AI engineer", "Agentic AI / LLM engineer", "Forward Deployed Engineer",
