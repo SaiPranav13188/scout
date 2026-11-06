@@ -25,6 +25,7 @@ app.add_middleware(
 
 owner_only = [Depends(require_owner), Depends(api_limit)]
 app.include_router(jobs.router, dependencies=owner_only)
+app.include_router(jobs.labels_router, dependencies=owner_only)
 app.include_router(meta.router, dependencies=owner_only)
 app.include_router(telegram.router)  # authenticated by Telegram's secret header instead
 

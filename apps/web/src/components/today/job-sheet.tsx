@@ -12,6 +12,7 @@ import type { Job } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 import { CompanyMark, FitMeter, FresherBadge, TrustBadge } from "./badges"
+import { LabelButtons } from "./label-buttons"
 
 function Section({ title, icon: Icon, children, delay = 0 }: {
   title: string
@@ -95,6 +96,11 @@ export function JobSheet({ jobId, preview, onClose, onOpened, onSkip, onApplied 
                     <FitMeter score={job.relevance_score} />
                   </div>
                 </dl>
+              </Section>
+
+              <Section title="Your call" icon={CircleCheck} delay={0.03}>
+                <p className="text-sm text-muted-foreground">Would you apply? Your answers teach Scout what fits you.</p>
+                <LabelButtons jobId={job.id} value={detail?.my_label ?? job.my_label} size="md" />
               </Section>
 
               <Section title="Is this really entry-level?" icon={CircleCheck} delay={0.05}>

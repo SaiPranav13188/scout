@@ -12,6 +12,7 @@ import type { Job } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 import { CompanyMark, FitMeter, FresherBadge, TrustBadge } from "./badges"
+import { LabelButtons } from "./label-buttons"
 
 interface Props {
   job: Job
@@ -179,6 +180,7 @@ export const JobCard = forwardRef<HTMLElement, Props>(function JobCard(
                 <PanelRightOpen /> Details
               </Button>
               <div className="ml-auto flex items-center gap-3">
+                <LabelButtons jobId={job.id} value={job.my_label} />
                 {active && (
                   <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="hidden items-center gap-1 text-[11px] text-muted-foreground lg:flex">
                     <Kbd>o</Kbd> open <Kbd>a</Kbd> applied <Kbd>s</Kbd> skip

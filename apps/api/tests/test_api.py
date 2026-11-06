@@ -210,3 +210,21 @@ async def test_saved_search_edit(client):
     assert (await client.patch(f"/api/saved-searches/{sid}", json={"url": "notaurl"}, headers=_auth())).status_code == 422
     assert (await client.patch("/api/saved-searches/00000000-0000-0000-0000-000000000000", json={"label": "x"},
                                headers=_auth())).status_code == 404
+
+
+async def test_job_labels(client, session):
+    await _seed(session)
+    items = (await client.get("/api/jobs", headers=_auth())).json()["items"]
+    a, b = items[0]["id"], items[1]["id"]
+    r = await client.put(f"/api/jobs/{a}/label", json={"label": "apply"}, headers=_auth())
+    assert r.status_code == 200 and r.json()["apply"] == 1 and r.json()["target"] == 40
+    await client.put(f"/api/jobs/{b}/label", json={"label": "no", "note": "too senior"}, headers=_auth())
+    await client.put(f"/api/jobs/{a}/label", json={"label": "maybe"}, headers=_auth())  # change my mind
+    summary = (await client.get("/api/labels/summary", headers=_auth())).json()
+    assert (summary["apply"], summary["maybe"], summary["no"], summary["total"]) == (0, 1, 1, 2)
+    labelled = {j["id"]: j["my_label"] for j in (await client.get("/api/jobs", headers=_auth())).json()["items"]}
+    assert labelled[a] == "maybe" and labelled[b] == "no"
+    assert (await client.get(f"/api/jobs/{a}", headers=_auth())).json()["my_label"] == "maybe"
+    await client.put(f"/api/jobs/{a}/label", json={"label": None}, headers=_auth())  # clear
+    assert (await client.get("/api/labels/summary", headers=_auth())).json()["total"] == 1
+    assert (await client.put(f"/api/jobs/{a}/label", json={"label": "yes!"}, headers=_auth())).status_code == 422

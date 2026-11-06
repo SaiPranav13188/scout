@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-query"
 
 import { api } from "./api"
-import type { JobFilters, JobPage, JobStatus } from "./types"
+import type { JobFilters, JobLabel, JobPage, JobStatus, LabelSummary } from "./types"
 
 export const keys = {
   jobs: (f: JobFilters) => ["jobs", f] as const,
@@ -19,6 +19,7 @@ export const keys = {
   companies: ["companies"] as const,
   runs: ["agent-runs"] as const,
   settings: ["settings"] as const,
+  labels: ["label-summary"] as const,
 }
 
 export function useJobs(filters: JobFilters) {
@@ -84,5 +85,33 @@ export function useCorrectExperience() {
       qc.setQueryData(keys.job(job.id), job)
       qc.invalidateQueries({ queryKey: ["jobs"] })
     },
+  })
+}
+
+
+export function useLabelSummary() {
+  return useQuery({ queryKey: keys.labels, queryFn: api.labelSummary })
+}
+
+/** Label a job (apply / maybe / no, or null to clear), updating cards immediately. */
+export function useSetLabel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, label }: { id: string; label: JobLabel | null }) => api.setLabel(id, label),
+    onMutate: async ({ id, label }) => {
+      await qc.cancelQueries({ queryKey: ["jobs"] })
+      const snapshots = qc.getQueriesData<InfiniteData<JobPage>>({ queryKey: ["jobs"] })
+      for (const [key, data] of snapshots) {
+        if (!data) continue
+        qc.setQueryData<InfiniteData<JobPage>>(key, {
+          ...data,
+          pages: data.pages.map((p) => ({ ...p, items: p.items.map((j) => (j.id === id ? { ...j, my_label: label } : j)) })),
+        })
+      }
+      return { snapshots }
+    },
+    onError: (_e, _v, ctx) => ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data)),
+    onSuccess: (summary: LabelSummary) => qc.setQueryData(keys.labels, summary),
+    onSettled: (_d, _e, { id }) => qc.invalidateQueries({ queryKey: keys.job(id) }),
   })
 }

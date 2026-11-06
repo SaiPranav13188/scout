@@ -7,8 +7,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scout_api.deps import db
-from scout_api.schemas import ExperienceCorrectionIn, JobDetail, JobPage, StatusIn, job_out
-from scout_core.db.models import Company, Job
+from scout_api.schemas import ExperienceCorrectionIn, JobDetail, JobPage, LabelIn, StatusIn, job_out
+from scout_core.db.models import Company, Job, JobLabel
 from scout_core.runs import audit
 from scout_core.services import MIN_FEED_RELEVANCE, feed_query, set_status
 from scout_core.settings_store import get_setting
@@ -79,7 +79,9 @@ async def list_jobs(
             select(col, func.count()).group_by(col))).all()}
 
     last_visit = _parse_dt(await get_setting(session, "last_visit_at"))
-    items = [job_out(job, company, last_visit) for job, company in rows]
+    ids = [job.id for job, _ in rows]
+    labels = dict((await session.execute(select(JobLabel.job_id, JobLabel.label).where(JobLabel.job_id.in_(ids)))).all()) if ids else {}
+    items = [job_out(job, company, last_visit, label=labels.get(job.id)) for job, company in rows]
     next_offset = offset + limit if offset + limit < (total or 0) else None
     return JobPage(items=items, total=int(total or 0), next_offset=next_offset, facets=facets)
 
@@ -91,7 +93,8 @@ async def get_job(job_id: UUID, session: Annotated[AsyncSession, Depends(db)]):
         raise HTTPException(404, "job not found")
     company = await session.get(Company, job.company_id) if job.company_id else None
     last_visit = _parse_dt(await get_setting(session, "last_visit_at"))
-    return job_out(job, company, last_visit, detail=True)
+    label = await session.scalar(select(JobLabel.label).where(JobLabel.job_id == job_id))
+    return job_out(job, company, last_visit, detail=True, label=label)
 
 
 @router.post("/{job_id}/status", response_model=JobDetail)
@@ -125,3 +128,40 @@ async def correct_experience(job_id: UUID, body: ExperienceCorrectionIn,
     await session.commit()
     company = await session.get(Company, job.company_id) if job.company_id else None
     return job_out(job, company, None, detail=True)
+
+
+@router.put("/{job_id}/label")
+async def set_label(job_id: UUID, body: LabelIn, session: Annotated[AsyncSession, Depends(db)]):
+    """My apply / maybe / no judgement. These labels become the Phase 3 matching eval set."""
+    if await session.get(Job, job_id) is None:
+        raise HTTPException(404, "job not found")
+    existing = await session.scalar(select(JobLabel).where(JobLabel.job_id == job_id))
+    if body.label is None:
+        if existing:
+            await session.delete(existing)
+    elif existing:
+        existing.label, existing.note = body.label, body.note
+    else:
+        session.add(JobLabel(job_id=job_id, label=body.label, note=body.note))
+    audit(session, actor="me", action="label_job", entity="job", entity_id=str(job_id),
+          after={"label": body.label})
+    await session.commit()
+    return await label_summary(session)
+
+
+labels_router = APIRouter(prefix="/api/labels", tags=["labels"])
+
+
+@labels_router.get("/summary")
+async def label_summary_route(session: Annotated[AsyncSession, Depends(db)]):
+    return await label_summary(session)
+
+
+LABEL_TARGET = 40  # spec: 30-50 labelled jobs before trusting the match score
+
+
+async def label_summary(session: AsyncSession) -> dict:
+    counts = dict((await session.execute(select(JobLabel.label, func.count()).group_by(JobLabel.label))).all())
+    total = sum(counts.values())
+    return {"apply": counts.get("apply", 0), "maybe": counts.get("maybe", 0), "no": counts.get("no", 0),
+            "total": total, "target": LABEL_TARGET}

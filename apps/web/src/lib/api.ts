@@ -1,7 +1,9 @@
 "use client"
 
 import { devAuthToken, getSupabase } from "./supabase"
-import type { AgentRun, CompanyRow, JobDetail, JobFilters, JobPage, JobStatus, SavedSearch, Stats } from "./types"
+import type {
+  AgentRun, CompanyRow, JobDetail, JobFilters, JobLabel, JobPage, JobStatus, LabelSummary, SavedSearch, Stats,
+} from "./types"
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
@@ -47,6 +49,9 @@ export const api = {
   correctExperience: (id: string, entry_level: boolean) =>
     request<JobDetail>(`/api/jobs/${id}/experience`, { method: "POST", body: JSON.stringify({ entry_level }) }),
   stats: () => request<Stats>("/api/stats"),
+  setLabel: (id: string, label: JobLabel | null) =>
+    request<LabelSummary>(`/api/jobs/${id}/label`, { method: "PUT", body: JSON.stringify({ label }) }),
+  labelSummary: () => request<LabelSummary>("/api/labels/summary"),
   visit: () => request<{ previous_visit_at: string | null }>("/api/visit", { method: "POST" }),
   settings: () => request<Record<string, unknown>>("/api/settings"),
   putSetting: (key: string, value: unknown) =>

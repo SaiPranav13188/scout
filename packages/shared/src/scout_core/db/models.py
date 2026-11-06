@@ -48,6 +48,7 @@ status_enum = Enum(ApplicationStatus, name="application_status", values_callable
 run_status_enum = Enum("running", "success", "error", "partial", name="run_status")
 notification_status_enum = Enum("pending", "sent", "failed", "suppressed", name="notification_status")
 outreach_channel_enum = Enum("email", "linkedin", "other", name="outreach_channel")
+label_enum = Enum("apply", "maybe", "no", name="job_label")
 
 
 # ------------------------------------------------------------------ profile & settings
@@ -236,6 +237,18 @@ class ResumeGenerated(Base):
     content: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     validation_result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created()
+
+
+class JobLabel(Base):
+    """My judgement of a job, for the matching eval set (spec §11 Phase 3, §13.1)."""
+
+    __tablename__ = "job_labels"
+    id: Mapped[uuid.UUID] = _pk()
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), unique=True)
+    label: Mapped[str] = mapped_column(label_enum)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _updated()
 
 
 # ------------------------------------------------------------------ applications & outreach

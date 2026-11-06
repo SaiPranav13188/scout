@@ -57,6 +57,17 @@ export interface Job {
   is_open: boolean | null
   status: JobStatus
   why: string
+  my_label: JobLabel | null
+}
+
+export type JobLabel = "apply" | "maybe" | "no"
+
+export interface LabelSummary {
+  apply: number
+  maybe: number
+  no: number
+  total: number
+  target: number
 }
 
 export interface JobDetail extends Job {

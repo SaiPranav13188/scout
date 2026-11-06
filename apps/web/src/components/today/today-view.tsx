@@ -16,6 +16,7 @@ import { CardSkeleton, RadarEmpty } from "./empty-state"
 import { FilterBar } from "./filter-bar"
 import { JobCard } from "./job-card"
 import { JobSheet } from "./job-sheet"
+import { LabelProgress } from "./label-progress"
 import { StatsStrip } from "./stats-strip"
 
 function greeting() {
@@ -136,6 +137,8 @@ export function TodayView() {
             : "You're caught up. New roles appear here as soon as they're found."}
         </p>
       </motion.div>
+
+      <LabelProgress />
 
       <StatsStrip />
 

@@ -58,6 +58,7 @@ class JobOut(BaseModel):
     is_open: bool | None
     status: str
     why: str
+    my_label: str | None = None
 
 
 class JobDetail(JobOut):
@@ -76,7 +77,8 @@ def company_brief(job: Job, company: Company | None) -> CompanyBrief:
     )
 
 
-def job_out(job: Job, company: Company | None, last_visit: datetime | None, detail: bool = False):
+def job_out(job: Job, company: Company | None, last_visit: datetime | None, detail: bool = False,
+            label: str | None = None):
     data = dict(
         id=job.id, title=job.title, company=company_brief(job, company), location=job.location,
         locations=job.locations or [], location_bucket=job.location_bucket, remote=job.remote,
@@ -92,7 +94,7 @@ def job_out(job: Job, company: Company | None, last_visit: datetime | None, deta
         relevance_matched=job.relevance_matched or [],
         trust=TrustOut(**(job.trust or {"level": job.trust_level, "score": 0, "signals": []})),
         verify_status=job.verify_status, verify_reason=job.verify_reason, verified_at=job.verified_at,
-        is_open=job.is_open, status=job.status.value, why=why_line(job),
+        is_open=job.is_open, status=job.status.value, why=why_line(job), my_label=label,
     )
     if detail:
         return JobDetail(**data, description=job.description, filter_reasons=job.filter_reasons or [])
@@ -139,3 +141,8 @@ class BoardIn(BaseModel):
     url: HttpUrl
     company_name: str = Field(min_length=1, max_length=200)
     website: HttpUrl | None = None
+
+
+class LabelIn(BaseModel):
+    label: Literal["apply", "maybe", "no"] | None  # None clears my label
+    note: str | None = Field(default=None, max_length=1000)
