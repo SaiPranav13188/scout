@@ -17,6 +17,7 @@ dependencies = [
     "cryptography>=43",
     "structlog>=24.4",
     "pyyaml>=6.0",
+    "google-auth-oauthlib>=1.2",
 ]
 
 [project.optional-dependencies]

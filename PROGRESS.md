@@ -22,7 +22,7 @@ Last updated: 2026-11-06
 | API: Supabase JWT (JWKS) auth, owner-only, rate limit, audit log | tests with real ES256 tokens (expired, wrong issuer, wrong user rejected) |
 | Dashboard: Today feed, details panel, ⌘K palette, keyboard shortcuts, undo, swipe, Startups, Saved searches, Agent health, Settings, login | lint + typecheck + production build pass; screenshots reviewed desktop + mobile; 0 console errors |
 
-**Test totals:** 175 Python tests passing, `ruff` clean, web lint/typecheck/build clean.
+**Test totals:** 223 Python tests passing, `ruff` clean, web lint/typecheck/build clean.
 
 ### Not done / not verified yet (honest list)
 
@@ -71,7 +71,17 @@ hire in the US and for experienced roles. Getting thousands of relevant jobs nee
 and Indian company boards. Discovery currently finds boards on Greenhouse, Lever and Ashby only; many Indian
 companies use Keka, Zoho Recruit or Darwinbox, which have no documented public job API.
 
-## Phase 2: Gmail alerts + more sources (not started)
+## Phase 2: Gmail alerts + more sources (in progress)
+
+| Item | Status |
+|---|---|
+| Gmail OAuth, read-only (`gmail.readonly`), token + client stored encrypted (Fernet) in Postgres | done; connected 2026-11-06 |
+| Parsers: LinkedIn, Wellfound, Internshala, Instahyre (one per sender) | done; tested on 34 real alert emails (local-only, never published) + format tests in CI |
+| Gmail check every 10 min (only emails newer than the last processed), same filters/dedupe/alerts | done; first run: 26 alert emails -> 153 jobs, feed 5 -> 59 relevant jobs |
+| Naukri | no parser: the inbox has no Naukri job alerts (only quizzes and reminders) |
+| Cloud Gmail runs | waiting for the ENCRYPTION_KEY GitHub secret (adding it was blocked by Claude Code's safety rules; command given to the user) |
+| Aggregator APIs (Adzuna etc.) | not started |
+
 ## Phase 3: Resume parsing + matching (not started)
 ## Phase 4: Tailoring + validation (not started)
 ## Phase 4b: Autofill Chrome extension (added by you on 2026-11-06; not started)

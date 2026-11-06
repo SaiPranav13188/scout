@@ -123,3 +123,9 @@ def test_company_history_is_not_experience():
     assert v.decision == Decision.KEEP
     v = classify("Software Engineer", "Trusted by banks for the past 15 years.")
     assert v.decision == Decision.KEEP
+
+
+def test_internshala_job_offer_after_internship_counts_as_conversion():
+    # Real Internshala card text (Nov 2026).
+    v = classify("Marketing Analytics", "Job offer upto ₹ 3.6LPA post internship", employment_type="Intern")
+    assert v.decision == Decision.KEEP

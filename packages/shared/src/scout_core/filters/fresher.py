@@ -234,7 +234,8 @@ def classify(title: str, description: str | None, rules: FresherRules | None = N
     is_intern = _has_word(t, "intern") or _has_word(t, "internship") or (
         fold(employment_type) in ("intern", "internship"))
     converts = re.search(r"(ppo|pre[- ]placement offer|full[- ]time conversion|convert(?:ed|ible)? to "
-                         r"(?:a )?full[- ]time|intern(?:ship)?[- ]to[- ](?:full[- ]time|fte|hire))",
+                         r"(?:a )?full[- ]time|intern(?:ship)?[- ]to[- ](?:full[- ]time|fte|hire)|"
+                         r"job offer.{0,40}post[- ]internship)",
                          f"{t} {d}") is not None
     if is_intern and not converts and not rules.include_internships:
         return FresherVerdict(Decision.DROP, Confidence.HIGH, None, None, False,

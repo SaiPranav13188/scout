@@ -27,6 +27,7 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
       MONGO_URL: ${{ secrets.MONGO_URL }}
+      ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

@@ -47,6 +47,8 @@ def test_unknown_company_is_unverified_not_verified():
 
 @pytest.mark.parametrize(("title", "family"), [
     ("Applied AI Engineer", "applied_ai"),
+    ("Artificial Intelligence Engineer - AWS", "applied_ai"),
+    ("AIML Engineer Digital & AI", "applied_ai"),
     ("Forward Deployed Engineer", "fde"),
     ("Backend Developer (Python)", "backend"),
     ("Full Stack Engineer", "fullstack"),

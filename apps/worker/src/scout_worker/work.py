@@ -17,7 +17,7 @@ from scout_core.discovery import YC_DATASET_URL, RobotsCache, discover_boards, y
 from scout_core.http import PoliteClient
 from scout_core.normalize import registered_domain
 from scout_core.notify.telegram import DigestItem, TelegramClient, digest_header, format_job
-from scout_core.pipeline.ingest import get_or_create_company, ingest_board
+from scout_core.pipeline.ingest import get_or_create_company, ingest_board, store_jobs
 from scout_core.rawstore import make_raw_store
 from scout_core.runs import track_run
 from scout_core.schedule import due_tasks, in_quiet_hours
@@ -31,7 +31,7 @@ from scout_core.services import (
     visible_feed_query,
     why_line,
 )
-from scout_core.settings_store import get_setting, load_rules
+from scout_core.settings_store import get_setting, load_rules, set_setting
 from scout_core.sources.base import BoardNotFound, SourceError
 from scout_core.trust import domain_registration_date
 from scout_core.types import ApplicationStatus, AtsType
@@ -369,3 +369,77 @@ async def run_tick(*, only: set[str] | None = None, skip: set[str] | None = None
             results["instant_alerts"] = f"error: {type(exc).__name__}: {exc}"[:500]
             await alert_failure("instant_alerts", f"{type(exc).__name__}: {exc}")
     return results, failed
+
+
+# ------------------------------------------------------------------ Gmail job alerts
+
+GMAIL_OVERLAP_S = 3600  # re-scan the last hour each run; job ids make reprocessing harmless
+
+
+async def run_gmail(slot_key: str | None = None) -> dict:
+    """Read new job-alert emails (read-only) and store their jobs like any other source."""
+    from scout_core.gmail import GmailClient, GmailNotConnected
+    from scout_core.secrets import SecretError
+    from scout_core.sources.email_alerts import ALERT_QUERY, parse_alert
+
+    async with worker_session() as session:
+        if not (await get_setting(session, "sources")).get("gmail_alerts", True):
+            return {"skipped": "disabled"}
+        try:
+            gm = await GmailClient.from_db(session)
+        except GmailNotConnected:
+            return {"skipped": "gmail_not_connected"}
+        except SecretError:
+            # ENCRYPTION_KEY missing in this environment: shown in the run output, not alerted every 10 min.
+            return {"skipped": "encryption_key_missing"}
+        # GmailAuthExpired propagates: the run is recorded as an error and I get a Telegram alert.
+
+    async with worker_session() as session, track_run(session, "gmail", slot_key) as run:
+        state = await get_setting(session, "gmail_state")
+        last_ms = int(state.get("last_internal_ms") or 0)
+        since = f" after:{max(0, last_ms // 1000 - GMAIL_OVERLAP_S)}" if last_ms else " newer_than:3d"
+        fr, rr, prefs = await load_rules(session)
+        raw_store = make_raw_store()
+        newest = last_ms
+        try:
+            ids = await gm.search(ALERT_QUERY + since, max_results=200)
+            run.inc("emails_seen", len(ids))
+            for mid in ids:
+                msg = await gm.get(mid)
+                newest = max(newest, int(msg.received_at.timestamp() * 1000))
+                try:
+                    parser, jobs = parse_alert(msg)
+                except Exception as exc:  # noqa: BLE001 - one odd email must not stop the run
+                    run.error(f"parse failed for {msg.sender} / {msg.subject[:60]}: {type(exc).__name__}")
+                    await raw_store.save_alert_email({"gmail_message_id": msg.id, "received_at": msg.received_at,
+                                                      "sender": msg.sender, "parsed_items": 0,
+                                                      "parse_errors": [str(exc)[:300]]})
+                    continue
+                if parser is None or not jobs:
+                    run.inc("emails_without_jobs")
+                    continue
+                run.inc("alert_emails")
+                by_company: dict[str, list] = {}
+                for job in jobs:
+                    by_company.setdefault(job.company_name, []).append(job)
+                for company_name, company_jobs in by_company.items():
+                    company = await get_or_create_company(session, name=company_name, website=None,
+                                                          source=company_jobs[0].source)
+                    stats = await store_jobs(session, company_jobs, company=company, fresher_rules=fr,
+                                             relevance_rules=rr, prefs=prefs)
+                    for k, v in stats.as_counts().items():
+                        run.inc(k, v)
+                await session.commit()
+                await raw_store.save_alert_email({"gmail_message_id": msg.id, "received_at": msg.received_at,
+                                                  "sender": msg.sender, "parser": parser,
+                                                  "parsed_items": len(jobs), "parse_errors": []})
+        finally:
+            await gm.aclose()
+            await raw_store.close()
+        if newest > last_ms:
+            await set_setting(session, "gmail_state", {"last_internal_ms": newest})
+            await session.commit()
+        return run.counts
+
+
+RUNNERS["gmail"] = run_gmail

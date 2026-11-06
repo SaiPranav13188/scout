@@ -30,7 +30,9 @@ DEFAULTS: dict[str, Any] = {
         "instant_alert_max_jobs": 8,     # jobs listed in full per message; the rest are counted
         "instant_alert_min_score": 85,   # used once scoring exists (Phase 3)
     },
-    "sources": {"greenhouse": True, "lever": True, "ashby": True, "adzuna": False},
+    "sources": {"greenhouse": True, "lever": True, "ashby": True, "gmail_alerts": True, "adzuna": False},
+    # Newest alert email already processed (Gmail internalDate, ms). Managed by the worker.
+    "gmail_state": {"last_internal_ms": 0},
     "adzuna": {
         "queries": ["software engineer fresher", "backend developer fresher", "ai engineer",
                     "full stack developer fresher", "python developer fresher", "graduate engineer trainee"],

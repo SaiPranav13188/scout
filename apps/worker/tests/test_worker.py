@@ -200,3 +200,16 @@ async def test_unrelated_jobs_not_alerted(session, db_url, monkeypatch):
     respx.post(url__regex=r"https://api\.telegram\.org/.*").mock(
         return_value=httpx.Response(200, json={"ok": True, "result": {}}))
     assert await work.run_instant_alerts() == {"sent": 0}
+
+
+@pytest.mark.db
+async def test_gmail_skips_cleanly_without_connection_or_key(session, db_url, monkeypatch):
+    s = get_settings()
+    monkeypatch.setattr(s, "database_url", db_url)
+    assert await work.run_gmail() == {"skipped": "gmail_not_connected"}
+    from scout_core.db.models import EncryptedSecret
+    session.add(EncryptedSecret(name="gmail_client", ciphertext=b"x"))
+    session.add(EncryptedSecret(name="gmail_refresh_token", ciphertext=b"x"))
+    await session.commit()
+    monkeypatch.setattr(s, "encryption_key", None)
+    assert await work.run_gmail() == {"skipped": "encryption_key_missing"}

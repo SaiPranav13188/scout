@@ -54,7 +54,7 @@ def run_slot(self, task: str, slot_key: str) -> None:
     runner = RUNNERS[task]
     try:
         asyncio.run(runner(slot_key))
-        if task == "ingest":
+        if task in ("ingest", "gmail"):
             asyncio.run(work.run_instant_alerts())
     except Exception as exc:
         asyncio.run(work.alert_failure(task, f"{type(exc).__name__}: {exc}"))

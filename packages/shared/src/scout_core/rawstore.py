@@ -22,6 +22,10 @@ class RawStore(ABC):
     @abstractmethod
     async def save_trace(self, doc: dict[str, Any]) -> None: ...
 
+    async def save_alert_email(self, doc: dict[str, Any]) -> None:
+        """raw_alert_emails (spec §10): gmail id, received_at, sender, parsed items, parse errors."""
+        await self.save_trace({"kind": "raw_alert_email", **doc})
+
     async def close(self) -> None:  # noqa: B027 - optional hook
         pass
 
@@ -46,6 +50,10 @@ class MongoRawStore(RawStore):
 
     async def save_trace(self, doc) -> None:
         await self._db.agent_traces.insert_one({**doc, "created_at": datetime.now(UTC)})
+
+    async def save_alert_email(self, doc) -> None:
+        await self._db.raw_alert_emails.update_one({"gmail_message_id": doc["gmail_message_id"]},
+                                                   {"$set": doc}, upsert=True)
 
     async def close(self) -> None:
         self._client.close()

@@ -77,6 +77,13 @@ INDIA_PLACES = {
     "mysuru": "mysuru", "mysore": "mysuru", "nagpur": "nagpur", "bhubaneswar": "bhubaneswar",
     "vadodara": "vadodara", "visakhapatnam": "visakhapatnam", "vizag": "visakhapatnam",
     "lucknow": "lucknow", "surat": "surat", "mangaluru": "mangaluru", "mangalore": "mangaluru",
+    # States and union territories (job sites often list only the state).
+    "karnataka": "india", "maharashtra": "india", "telangana": "india", "tamil nadu": "india",
+    "kerala": "india", "andhra pradesh": "india", "gujarat": "india", "rajasthan": "india",
+    "haryana": "india", "uttar pradesh": "india", "west bengal": "india", "punjab": "india",
+    "madhya pradesh": "india", "odisha": "india", "goa": "india", "bihar": "india",
+    "jharkhand": "india", "assam": "india", "uttarakhand": "india", "himachal pradesh": "india",
+    "chhattisgarh": "india", "jammu": "india", "puducherry": "india",
 }
 
 _REMOTE_WORDS = re.compile(r"\b(remote|anywhere|work from home|wfh|distributed|fully remote)\b")

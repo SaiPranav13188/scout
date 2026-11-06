@@ -10,7 +10,7 @@ from scout_core.text import fold
 class RelevanceRules:
     # role family -> title patterns (regex, matched on the folded title)
     families: dict[str, list[str]] = field(default_factory=lambda: {
-        "applied_ai": [r"\bai\b", r"\bllm", r"gen ?ai", r"agentic", r"\bagents?\b", r"machine learning",
+        "applied_ai": [r"\bai\b", r"artificial intelligence", r"\baiml\b", r"\bllm", r"gen ?ai", r"agentic", r"\bagents?\b", r"machine learning",
                        r"\bml\b", r"applied scientist", r"\bnlp\b", r"\brag\b", r"prompt engineer",
                        r"ai engineer", r"ai/ml", r"data scien"],
         "fde": [r"forward[- ]deployed", r"\bfde\b", r"solutions? engineer", r"deployment engineer",
