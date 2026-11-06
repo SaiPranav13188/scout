@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scout_api.deps import db
-from scout_api.schemas import BoardIn, SavedSearchIn, SavedSearchOut
+from scout_api.schemas import BoardIn, SavedSearchIn, SavedSearchOut, SavedSearchUpdate
 from scout_core.db.models import AgentRun, Company, CompanyWatchlist, Job, SavedSearch
 from scout_core.http import PoliteClient
 from scout_core.pipeline.ingest import get_or_create_company
@@ -83,6 +83,21 @@ async def add_saved(body: SavedSearchIn, session: Annotated[AsyncSession, Depend
     pos = (await session.scalar(select(func.max(SavedSearch.position)))) or 0
     row = SavedSearch(site=body.site, label=body.label, url=str(body.url), position=pos + 1)
     session.add(row)
+    await session.commit()
+    return SavedSearchOut(id=row.id, site=row.site, label=row.label, url=row.url, position=row.position)
+
+
+@router.patch("/saved-searches/{search_id}", response_model=SavedSearchOut)
+async def update_saved(search_id: UUID, body: SavedSearchUpdate, session: Annotated[AsyncSession, Depends(db)]):
+    row = await session.get(SavedSearch, search_id)
+    if row is None:
+        raise HTTPException(404, "saved search not found")
+    if body.site is not None:
+        row.site = body.site
+    if body.label is not None:
+        row.label = body.label.strip()
+    if body.url is not None:
+        row.url = str(body.url)
     await session.commit()
     return SavedSearchOut(id=row.id, site=row.site, label=row.label, url=row.url, position=row.position)
 

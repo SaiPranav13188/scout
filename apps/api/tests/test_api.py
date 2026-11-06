@@ -196,3 +196,17 @@ async def test_dev_token_only_outside_production(client, monkeypatch):
     monkeypatch.setattr(s, "env", "production")
     # In production the dev token is just an invalid JWT.
     assert (await client.get("/api/stats", headers=_auth("local-dev-token"))).status_code == 401
+
+
+async def test_saved_search_edit(client):
+    r = await client.post("/api/saved-searches", json={"site": "linkedin", "label": " old ", "url": "https://www.linkedin.com/jobs/"},
+                          headers=_auth())
+    sid = r.json()["id"]
+    r = await client.patch(f"/api/saved-searches/{sid}",
+                           json={"label": "LinkedIn – AI – India", "url": "https://www.linkedin.com/jobs/search/?keywords=ai"},
+                           headers=_auth())
+    assert r.status_code == 200
+    assert r.json()["label"] == "LinkedIn – AI – India" and "keywords=ai" in r.json()["url"]
+    assert (await client.patch(f"/api/saved-searches/{sid}", json={"url": "notaurl"}, headers=_auth())).status_code == 422
+    assert (await client.patch("/api/saved-searches/00000000-0000-0000-0000-000000000000", json={"label": "x"},
+                               headers=_auth())).status_code == 404

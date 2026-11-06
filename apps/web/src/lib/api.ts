@@ -54,6 +54,8 @@ export const api = {
   savedSearches: () => request<SavedSearch[]>("/api/saved-searches"),
   addSavedSearch: (b: { site: string; label: string; url: string }) =>
     request<SavedSearch>("/api/saved-searches", { method: "POST", body: JSON.stringify(b) }),
+  updateSavedSearch: (id: string, b: { site?: string; label?: string; url?: string }) =>
+    request<SavedSearch>(`/api/saved-searches/${id}`, { method: "PATCH", body: JSON.stringify(b) }),
   deleteSavedSearch: (id: string) => request<void>(`/api/saved-searches/${id}`, { method: "DELETE" }),
   companies: () => request<CompanyRow[]>("/api/companies"),
   addBoard: (b: { url: string; company_name: string; website?: string }) =>

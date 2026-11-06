@@ -121,6 +121,12 @@ class SavedSearchIn(BaseModel):
     url: HttpUrl
 
 
+class SavedSearchUpdate(BaseModel):
+    site: Literal["linkedin", "wellfound", "internshala", "instahyre", "cutshort", "yc", "naukri", "other"] | None = None
+    label: str | None = Field(default=None, min_length=1, max_length=120)
+    url: HttpUrl | None = None
+
+
 class SavedSearchOut(BaseModel):
     id: UUID
     site: str
