@@ -76,13 +76,14 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                       <p className="truncate text-foreground">{j.title}</p>
                       <p className="truncate text-xs">{j.company.name} · {FAMILY_LABEL[j.role_family]}</p>
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); window.open(j.apply_url, "_blank", "noopener,noreferrer") }}
+                    <a
+                      href={j.apply_url} target="_blank" rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       className="rounded-md p-1 opacity-0 transition-opacity group-data-[selected=true]:opacity-100 hover:bg-background"
                       aria-label="Open original job page"
                     >
                       <ArrowUpRight className="size-4" />
-                    </button>
+                    </a>
                   </Command.Item>
                 ))}
               </Command.Group>

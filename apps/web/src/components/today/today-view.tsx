@@ -74,14 +74,20 @@ export function TodayView() {
     })
   }, [setStatus, openJobId, openDetails])
 
-  const openJob = useCallback((job: Job) => {
-    window.open(job.apply_url, "_blank", "noopener,noreferrer")
+  // Shown after a job page opens: a nudge to mark it applied.
+  const afterOpen = useCallback((job: Job) => {
     toast("Opened the original posting", {
       description: "Applied there? Mark it so it leaves your feed.",
       action: { label: "Mark applied", onClick: () => changeStatus(job, "applied") },
       duration: 8000,
     })
   }, [changeStatus])
+
+  // Keyboard "o" and mobile swipe have no link to click, so they open the page from script.
+  const openJob = useCallback((job: Job) => {
+    window.open(job.apply_url, "_blank", "noopener,noreferrer")
+    afterOpen(job)
+  }, [afterOpen])
 
   // Keyboard: j/k move, o open, a applied, s skip, enter details.
   useEffect(() => {
@@ -169,6 +175,7 @@ export function TodayView() {
                 active={i === active}
                 onHover={() => setActive(i)}
                 onOpen={() => openJob(job)}
+                onOpened={() => afterOpen(job)}
                 onSkip={() => changeStatus(job, "skipped")}
                 onApplied={() => changeStatus(job, "applied")}
                 onDetails={() => openDetails(job.id)}
@@ -185,7 +192,7 @@ export function TodayView() {
         jobId={openJobId}
         preview={jobs.find((j) => j.id === openJobId)}
         onClose={() => openDetails(null)}
-        onOpen={openJob}
+        onOpened={afterOpen}
         onSkip={(j) => changeStatus(j, "skipped")}
         onApplied={(j) => changeStatus(j, "applied")}
       />

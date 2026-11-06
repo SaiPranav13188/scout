@@ -18,6 +18,8 @@ interface Props {
   isNew: boolean
   active: boolean
   onOpen: () => void
+  /** Called after the "Open job" link is clicked (the link itself opens the page). */
+  onOpened: () => void
   onSkip: () => void
   onApplied: () => void
   onDetails: () => void
@@ -27,7 +29,7 @@ interface Props {
 const SWIPE = 110
 
 export const JobCard = forwardRef<HTMLElement, Props>(function JobCard(
-  { job, isNew, active, onOpen, onSkip, onApplied, onDetails, onHover },
+  { job, isNew, active, onOpen, onOpened, onSkip, onApplied, onDetails, onHover },
   ref,
 ) {
   const local = useRef<HTMLElement | null>(null)
@@ -158,10 +160,14 @@ export const JobCard = forwardRef<HTMLElement, Props>(function JobCard(
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Button size="sm" onClick={onOpen}
+              <Button size="sm" asChild
                 className="group/open h-8 bg-brand px-3 text-brand-foreground shadow-[0_4px_20px_-6px_var(--glow)] hover:bg-brand/90">
-                Open job
-                <ArrowUpRight className="transition-transform group-hover/open:translate-x-0.5 group-hover/open:-translate-y-0.5" />
+                {/* A real link: browsers never block it as a pop-up. */}
+                <a href={job.apply_url} target="_blank" rel="noopener noreferrer" onClick={onOpened}
+                  onPointerDownCapture={(e) => e.stopPropagation()}>
+                  Open job
+                  <ArrowUpRight className="transition-transform group-hover/open:translate-x-0.5 group-hover/open:-translate-y-0.5" />
+                </a>
               </Button>
               <Button size="sm" variant="outline" onClick={onApplied} className="h-8">
                 <Check /> Mark applied

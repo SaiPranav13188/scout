@@ -29,11 +29,11 @@ function Section({ title, icon: Icon, children, delay = 0 }: {
   )
 }
 
-export function JobSheet({ jobId, preview, onClose, onOpen, onSkip, onApplied }: {
+export function JobSheet({ jobId, preview, onClose, onOpened, onSkip, onApplied }: {
   jobId: string | null
   preview?: Job
   onClose: () => void
-  onOpen: (job: Job) => void
+  onOpened: (job: Job) => void
   onSkip: (job: Job) => void
   onApplied: (job: Job) => void
 }) {
@@ -59,8 +59,10 @@ export function JobSheet({ jobId, preview, onClose, onOpen, onSkip, onApplied }:
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <Button onClick={() => onOpen(job)} className="bg-brand text-brand-foreground hover:bg-brand/90">
-                  Open job <ArrowUpRight />
+                <Button asChild className="bg-brand text-brand-foreground hover:bg-brand/90">
+                  <a href={job.apply_url} target="_blank" rel="noopener noreferrer" onClick={() => onOpened(job)}>
+                    Open job <ArrowUpRight />
+                  </a>
                 </Button>
                 <Button variant="outline" onClick={() => onApplied(job)}><Check /> Mark applied</Button>
                 <Button variant="ghost" onClick={() => onSkip(job)}><X /> Skip</Button>
