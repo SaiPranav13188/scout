@@ -22,7 +22,7 @@ Last updated: 2026-11-06
 | API: Supabase JWT (JWKS) auth, owner-only, rate limit, audit log | tests with real ES256 tokens (expired, wrong issuer, wrong user rejected) |
 | Dashboard: Today feed, details panel, ⌘K palette, keyboard shortcuts, undo, swipe, Startups, Saved searches, Agent health, Settings, login | lint + typecheck + production build pass; screenshots reviewed desktop + mobile; 0 console errors |
 
-**Test totals:** 163 Python tests passing, `ruff` clean, web lint/typecheck/build clean.
+**Test totals:** 175 Python tests passing, `ruff` clean, web lint/typecheck/build clean.
 
 ### Not done / not verified yet (honest list)
 
@@ -34,6 +34,33 @@ Last updated: 2026-11-06
 - **Playwright Test for the dashboard** (spec §4) not written yet; UI was checked with scripted screenshots.
 - **Adzuna plug-in** not built (settings toggle exists; moves to Phase 2 with the key).
 - Changing filter settings applies to **new** jobs only; already-seen jobs aren't re-evaluated yet.
+
+### Live setup (2026-11-06, evening)
+
+| Item | Status |
+|---|---|
+| Supabase project `scout` (Mumbai, free) | created via MCP; schema 0003 applied; RLS on all 17 tables; public REST API returns nothing (checked); sign-ups disabled; 1 owner user |
+| Telegram bot `@scout_pranav_jobs_bot` | live; test message, evening summary and instant alerts delivered |
+| Cloud schedule (free) | public repo github.com/SaiPranav13188/scout; GitHub Actions `Scout tick` every ~10 min, `Scout discovery` weekly, monthly keepalive; secrets stored encrypted |
+| CI on GitHub | passing (Python tests against real Postgres + dashboard lint/typecheck/build) |
+| Instant alerts | every new relevant job, grouped, sent once (marked before send, unmarked on failure); quiet hours 22:30-07:30 |
+
+**Decisions you made:** everything free; public repo (spec file with personal details kept out of it);
+instant alerts for every new relevant job; quiet hours kept. Production uses GitHub Actions instead of an
+always-on Celery worker (Celery remains for local/Docker use).
+
+**Timing, measured:** a check of 227 boards takes ~2.5 min from India and ~5.5 min on GitHub's US runners
+(database round trips to Mumbai). GitHub may delay scheduled runs when busy, so alerts arrive within roughly
+10-20 minutes of a job appearing on a company board, not seconds.
+
+**Bug found in the live run and fixed:** vector.co's website links to 97 other companies' job boards, and
+discovery credited all of them to "Vector". Discovery now ignores sites linking to more than 2 boards and
+checks the Greenhouse board owner's name. The wrong rows were removed and jobs rebuilt (with your approval).
+Also fixed: remote jobs whose title names another country ("US Remote", "Spain") were shown as worldwide.
+
+**Not yet:** dashboard and API are not hosted (they run on the laptop), so Telegram buttons and
+`/today` etc. don't respond yet; Gmail alerts (Phase 2); MongoDB Atlas for raw payloads (runs on GitHub
+currently keep raw payloads only for the duration of the run).
 
 ### Key finding from the real run
 
