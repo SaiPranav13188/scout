@@ -36,8 +36,19 @@ def visible_feed_query() -> Select:
                               Job.relevance_score >= MIN_FEED_RELEVANCE)
 
 
-def why_line(job: Job) -> str:
-    parts = []
+async def latest_scores(session: AsyncSession, ids: list) -> dict:
+    """Match score per job id (current prompt version), for digests and alerts."""
+    from scout_core.db.models import JobScore
+    from scout_core.matching import PROMPT_VERSION
+    if not ids:
+        return {}
+    rows = (await session.execute(select(JobScore.job_id, JobScore.score).where(
+        JobScore.job_id.in_(ids), JobScore.prompt_version == PROMPT_VERSION))).all()
+    return {r.job_id: r.score for r in rows}
+
+
+def why_line(job: Job, score: int | None = None) -> str:
+    parts = [f"Match {score}/100"] if score is not None else []
     if job.role_family not in ("other", "unrelated"):
         parts.append(job.role_family.replace("_", " ").replace("fde", "FDE"))
     if job.fresher_reasons:
@@ -124,8 +135,9 @@ async def digest_items(session: AsyncSession, *, since: datetime, limit: int) ->
     total = await session.scalar(select(func.count()).select_from(base.subquery()))
     rows = (await session.scalars(base.order_by(
         Job.relevance_score.desc(), func.coalesce(Job.posted_at, Job.first_seen_at).desc()).limit(limit))).all()
+    scores = await latest_scores(session, [j.id for j in rows])
     items = [DigestItem(str(j.id), j.title, j.company_name, j.location, salary_text(j), j.posted_at,
-                        j.fresher_confidence, j.trust_level, why_line(j), j.apply_url) for j in rows]
+                        j.fresher_confidence, j.trust_level, why_line(j, scores.get(j.id)), j.apply_url) for j in rows]
     return items, int(total or 0)
 
 

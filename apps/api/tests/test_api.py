@@ -228,3 +228,21 @@ async def test_job_labels(client, session):
     await client.put(f"/api/jobs/{a}/label", json={"label": None}, headers=_auth())  # clear
     assert (await client.get("/api/labels/summary", headers=_auth())).json()["total"] == 1
     assert (await client.put(f"/api/jobs/{a}/label", json={"label": "yes!"}, headers=_auth())).status_code == 422
+
+
+async def test_match_score_in_feed_and_best_fit_sort(client, session):
+    from scout_core.db.models import JobScore
+    from scout_core.matching import PROMPT_VERSION
+    await _seed(session)
+    items = (await client.get("/api/jobs", headers=_auth())).json()["items"]
+    assert all(j["match"] is None for j in items)
+    backend = next(j for j in items if j["title"] == "Backend Engineer")
+    import uuid as _uuid
+    session.add(JobScore(job_id=_uuid.UUID(backend["id"]), score=91, breakdown={"info": "full"}, reasons=["fits"],
+                         matched_skills=["fastapi"], missing_skills=["go"], red_flags=[], model="m",
+                         prompt_version=PROMPT_VERSION))
+    await session.commit()
+    best = (await client.get("/api/jobs", params={"sort": "relevance"}, headers=_auth())).json()["items"]
+    assert best[0]["title"] == "Backend Engineer"
+    assert best[0]["match"]["score"] == 91 and best[0]["match"]["band"] == "top"
+    assert best[0]["match"]["missing_skills"] == ["go"]

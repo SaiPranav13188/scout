@@ -58,6 +58,18 @@ export interface Job {
   status: JobStatus
   why: string
   my_label: JobLabel | null
+  match: Match | null
+}
+
+export interface Match {
+  score: number
+  band: "top" | "good" | "stretch" | "low"
+  reasons: string[]
+  matched_skills: string[]
+  missing_skills: string[]
+  red_flags: string[]
+  info: "full" | "title_only"
+  breakdown: { skills?: number; embedding?: number; rubric?: number; [k: string]: unknown }
 }
 
 export type JobLabel = "apply" | "maybe" | "no"

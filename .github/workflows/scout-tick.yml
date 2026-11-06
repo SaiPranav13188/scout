@@ -28,6 +28,11 @@ jobs:
       TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
       MONGO_URL: ${{ secrets.MONGO_URL }}
       ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+      # Match scoring (skips quietly until the GEMINI_API_KEY secret exists). Model names are config.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-3.5-flash
+      GEMINI_FALLBACK_MODELS: gemini-3.5-flash-lite,gemini-3.8-flash
+      GEMINI_EMBEDDING_MODEL: gemini-embedding-2
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

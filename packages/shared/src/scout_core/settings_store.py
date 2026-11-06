@@ -43,6 +43,13 @@ DEFAULTS: dict[str, Any] = {
     "fresher_rules": asdict(FresherRules()),
     "relevance_rules": asdict(RelevanceRules()),
     "preferences": asdict(Preferences()),
+    "matching": {
+        "weights": {"skills": 0.35, "embedding": 0.25, "rubric": 0.40},
+        "bands": {"top": 85, "good": 70, "stretch": 55},
+        "target_roles": ["Applied AI engineer", "Agentic AI / LLM engineer", "Forward Deployed Engineer",
+                         "Backend engineer (Python, Node/TypeScript)", "Full-stack engineer",
+                         "Software engineer (entry level)"],
+    },
     "paused": False,
     "last_visit_at": None,
 }

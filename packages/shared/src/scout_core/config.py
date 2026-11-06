@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr | None = None
     gemini_model: str | None = None
     gemini_embedding_model: str | None = None
+    # Comma-separated models to try, in order, when the main one stays overloaded (503).
+    gemini_fallback_models: str = ""
 
     # Comma-separated web origins allowed to call the API.
     cors_origins: str = "http://localhost:3000"

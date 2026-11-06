@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 
 import { CompanyMark, FitMeter, FresherBadge, TrustBadge } from "./badges"
 import { LabelButtons } from "./label-buttons"
+import { MatchRing } from "./match-ring"
 
 interface Props {
   job: Job
@@ -153,6 +154,11 @@ export const JobCard = forwardRef<HTMLElement, Props>(function JobCard(
                   {FAMILY_LABEL[job.role_family]}
                 </span>
               )}
+              {job.match?.missing_skills.slice(0, 3).map((s) => (
+                <span key={`miss-${s}`} className="inline-flex h-6 items-center rounded-md border border-dashed border-warning/40 px-2 text-[11px] text-warning">
+                  missing: {s}
+                </span>
+              ))}
               {job.relevance_matched.slice(0, 4).map((s) => (
                 <span key={s} className="inline-flex h-6 items-center rounded-md border border-dashed px-2 text-[11px] text-muted-foreground">
                   {s}
@@ -186,7 +192,7 @@ export const JobCard = forwardRef<HTMLElement, Props>(function JobCard(
                     <Kbd>o</Kbd> open <Kbd>a</Kbd> applied <Kbd>s</Kbd> skip
                   </motion.span>
                 )}
-                <FitMeter score={job.relevance_score} />
+                {job.match ? <MatchRing match={job.match} /> : <FitMeter score={job.relevance_score} />}
               </div>
             </div>
           </div>

@@ -96,6 +96,11 @@ def main() -> None:
         asyncio.run(gmail_connect(json.loads(Path(args[0] if args else "gmail_client.json").read_text())))
     elif cmd == "gmail-senders":
         asyncio.run(gmail_senders())
+    elif cmd == "resume-parse":
+        print(json.dumps(asyncio.run(work.save_master_resume(args[0] if args else "private/resume.pdf")),
+                         indent=2, default=str))
+    elif cmd == "score":
+        print(json.dumps(asyncio.run(work.run_scoring(stamp, limit=int(args[0]) if args else 25)), indent=2))
     elif cmd == "add-board" and len(args) >= 3:
         asyncio.run(add_board(args[0], args[1], args[2], args[3] if len(args) > 3 else None))
     else:

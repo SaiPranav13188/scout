@@ -39,6 +39,7 @@ def due_tasks(now: datetime, schedule: dict, *, paused: bool = False) -> list[Du
         hours = minutes / 60 if minutes else schedule.get("ingest_interval_hours", 4)
         due.append(_interval_slot(now, hours, "ingest"))
         due.append(_interval_slot(now, hours, "gmail"))
+        due.append(_interval_slot(now, hours, "scoring"))
         due.append(_interval_slot(now, schedule["verify_interval_hours"], "verify"))
 
         disc_day = int(schedule.get("discovery_weekday", 6))

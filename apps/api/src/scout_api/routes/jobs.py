@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from scout_api.deps import db
 from scout_api.schemas import ExperienceCorrectionIn, JobDetail, JobPage, LabelIn, StatusIn, job_out
-from scout_core.db.models import Company, Job, JobLabel
+from scout_core.db.models import Company, Job, JobLabel, JobScore
+from scout_core.matching import PROMPT_VERSION
 from scout_core.runs import audit
 from scout_core.services import MIN_FEED_RELEVANCE, feed_query, set_status
 from scout_core.settings_store import get_setting
@@ -66,10 +67,13 @@ async def list_jobs(
 
     total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
     posted = func.coalesce(Job.posted_at, Job.first_seen_at)
-    order = [posted.desc(), Job.relevance_score.desc()] if sort == "newest" else \
-            [Job.relevance_score.desc(), posted.desc()]
+    scored = select(JobScore.job_id, JobScore.score).where(JobScore.prompt_version == PROMPT_VERSION).subquery()
+    # "Best fit": the resume match score when a job has one, otherwise the plain-code role fit.
+    fit = func.coalesce(scored.c.score, Job.relevance_score)
+    order = [posted.desc(), fit.desc()] if sort == "newest" else [fit.desc(), posted.desc()]
     rows = (await session.execute(
         stmt.add_columns(Company).outerjoin(Company, Company.id == Job.company_id)
+        .outerjoin(scored, scored.c.job_id == Job.id)
         .order_by(*order, Job.id).offset(offset).limit(limit))).all()
 
     facets: dict[str, dict[str, int]] = {}
@@ -81,9 +85,19 @@ async def list_jobs(
     last_visit = _parse_dt(await get_setting(session, "last_visit_at"))
     ids = [job.id for job, _ in rows]
     labels = dict((await session.execute(select(JobLabel.job_id, JobLabel.label).where(JobLabel.job_id.in_(ids)))).all()) if ids else {}
-    items = [job_out(job, company, last_visit, label=labels.get(job.id)) for job, company in rows]
+    scores = await _scores(session, ids)
+    items = [job_out(job, company, last_visit, label=labels.get(job.id), score=scores.get(job.id))
+             for job, company in rows]
     next_offset = offset + limit if offset + limit < (total or 0) else None
     return JobPage(items=items, total=int(total or 0), next_offset=next_offset, facets=facets)
+
+
+async def _scores(session: AsyncSession, ids: list) -> dict:
+    if not ids:
+        return {}
+    rows = (await session.scalars(select(JobScore).where(
+        JobScore.job_id.in_(ids), JobScore.prompt_version == PROMPT_VERSION).order_by(JobScore.created_at))).all()
+    return {r.job_id: r for r in rows}  # newest wins
 
 
 @router.get("/{job_id}", response_model=JobDetail)
@@ -94,7 +108,7 @@ async def get_job(job_id: UUID, session: Annotated[AsyncSession, Depends(db)]):
     company = await session.get(Company, job.company_id) if job.company_id else None
     last_visit = _parse_dt(await get_setting(session, "last_visit_at"))
     label = await session.scalar(select(JobLabel.label).where(JobLabel.job_id == job_id))
-    return job_out(job, company, last_visit, detail=True, label=label)
+    return job_out(job, company, last_visit, detail=True, label=label, score=(await _scores(session, [job_id])).get(job_id))
 
 
 @router.post("/{job_id}/status", response_model=JobDetail)

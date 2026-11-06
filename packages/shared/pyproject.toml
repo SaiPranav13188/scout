@@ -18,6 +18,8 @@ dependencies = [
     "structlog>=24.4",
     "pyyaml>=6.0",
     "google-auth-oauthlib>=1.2",
+    "google-genai>=1.0",
+    "pypdf>=5.0",
 ]
 
 [project.optional-dependencies]

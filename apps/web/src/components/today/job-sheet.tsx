@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 
 import { CompanyMark, FitMeter, FresherBadge, TrustBadge } from "./badges"
 import { LabelButtons } from "./label-buttons"
+import { BreakdownBar, MatchRing } from "./match-ring"
 
 function Section({ title, icon: Icon, children, delay = 0 }: {
   title: string
@@ -97,6 +98,34 @@ export function JobSheet({ jobId, preview, onClose, onOpened, onSkip, onApplied 
                   </div>
                 </dl>
               </Section>
+
+              {(detail?.match ?? job.match) && (() => {
+                const m = (detail?.match ?? job.match)!
+                return (
+                  <Section title="Match with your resume" icon={Building2} delay={0.02}>
+                    <div className="flex items-center gap-4 rounded-xl border bg-card/50 p-4">
+                      <MatchRing match={m} size={64} />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <BreakdownBar label="Skills you have" value={Number(m.breakdown.skills ?? 0)} hint="Overlap between the job's skills and your resume" />
+                        <BreakdownBar label="Profile similarity" value={Number(m.breakdown.embedding ?? 0)} hint="Meaning-level similarity of the job and your profile" />
+                        <BreakdownBar label="AI judgement" value={Number(m.breakdown.rubric ?? 0)} hint="Gemini's rubric score" />
+                      </div>
+                    </div>
+                    <ul className="space-y-1.5 text-sm">
+                      {m.reasons.map((r, i) => <li key={i} className="flex gap-2"><span className="mt-2 size-1 shrink-0 rounded-full bg-brand" />{r}</li>)}
+                    </ul>
+                    {m.matched_skills.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">{m.matched_skills.map((s) => (
+                        <span key={s} className="rounded-md bg-success-soft px-2 py-0.5 text-[11px] text-success">✓ {s}</span>))}</div>
+                    )}
+                    {m.missing_skills.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">{m.missing_skills.map((s) => (
+                        <span key={s} className="rounded-md bg-warning-soft px-2 py-0.5 text-[11px] text-warning">missing: {s}</span>))}</div>
+                    )}
+                    {m.red_flags.length > 0 && <p className="text-xs text-muted-foreground">Notes: {m.red_flags.join(" · ")}</p>}
+                  </Section>
+                )
+              })()}
 
               <Section title="Your call" icon={CircleCheck} delay={0.03}>
                 <p className="text-sm text-muted-foreground">Would you apply? Your answers teach Scout what fits you.</p>

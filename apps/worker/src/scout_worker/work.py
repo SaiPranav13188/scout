@@ -26,6 +26,7 @@ from scout_core.services import (
     digest_items,
     feed_query,
     finish_notification,
+    latest_scores,
     salary_text,
     today_stats,
     visible_feed_query,
@@ -312,6 +313,7 @@ async def run_instant_alerts(now: datetime | None = None) -> dict:
             jobs = (await session.scalars(select(Job).where(Job.id.in_(claimed)).order_by(
                 Job.relevance_score.desc(), func.coalesce(Job.posted_at, Job.first_seen_at).desc()))).all()
             limit = int(cfg.get("instant_alert_max_jobs", 8))
+            scores = await latest_scores(session, [j.id for j in jobs])
             chat = get_settings().telegram_chat_id
             try:
                 n = len(jobs)
@@ -319,7 +321,8 @@ async def run_instant_alerts(now: datetime | None = None) -> dict:
                 for job in jobs[:limit]:
                     text, buttons = format_job(DigestItem(
                         str(job.id), job.title, job.company_name, job.location, salary_text(job),
-                        job.posted_at, job.fresher_confidence, job.trust_level, why_line(job), job.apply_url))
+                        job.posted_at, job.fresher_confidence, job.trust_level, why_line(job, scores.get(job.id)),
+                        job.apply_url))
                     await tg.send(chat, text, buttons)
                     await asyncio.sleep(0.4)  # stay well under Telegram's per-chat rate limit
                 if n > limit:
@@ -443,3 +446,83 @@ async def run_gmail(slot_key: str | None = None) -> dict:
 
 
 RUNNERS["gmail"] = run_gmail
+
+
+# ------------------------------------------------------------------ resume + match scoring (Phase 3)
+
+async def save_master_resume(path: str) -> dict:
+    """Parse a resume file into a new master_resume version (older versions are kept, never edited)."""
+    from pathlib import Path
+
+    from scout_core.db.models import MasterResume
+    from scout_core.llm import Gemini
+    from scout_core.resume import extract_text, fact_check, parse_resume, split_contact
+
+    raw = extract_text(Path(path))
+    contact, redacted = split_contact(raw)
+    llm = Gemini.from_settings()
+    data = await parse_resume(llm, redacted)
+    check = fact_check(data, raw)
+    async with worker_session() as session:
+        version = (await session.scalar(select(func.max(MasterResume.version)))) or 0
+        await session.execute(update(MasterResume).values(is_active=False))
+        row = MasterResume(file_url=f"local:{Path(path).name}", version=version + 1, is_active=True,
+                           parsed={**data.model_dump(), "contact": contact.model_dump(), "fact_check": check,
+                                   "parsed_with": llm.usage.by_call[-1]["model"], "reviewed": False})
+        session.add(row)
+        await session.commit()
+        return {"version": row.version, "fact_check": check, "usage": llm.usage.by_call}
+
+
+async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
+    """Score feed jobs that have no score yet against the active master resume."""
+    from scout_core.db.models import JobScore, MasterResume
+    from scout_core.llm import Gemini, LLMError, LLMNotConfigured
+    from scout_core.matching import PROMPT_VERSION, Weights, profile_text, score_job
+    from scout_core.resume import ResumeData
+
+    async with worker_session() as session:
+        master = await session.scalar(select(MasterResume).where(MasterResume.is_active.is_(True)))
+        if master is None:
+            return {"skipped": "no_master_resume"}
+        try:
+            llm = Gemini.from_settings()
+        except LLMNotConfigured:
+            return {"skipped": "gemini_not_configured"}
+
+    async with worker_session() as session, track_run(session, "scoring", slot_key) as run:
+        resume = ResumeData.model_validate({k: v for k, v in master.parsed.items() if k in ResumeData.model_fields})
+        cfg = await get_setting(session, "matching")
+        weights = Weights(**cfg.get("weights", {}))
+        targets = cfg.get("target_roles", [])
+        resume_vec = (await llm.embed([profile_text(resume, targets)], purpose="embed_profile"))[0]
+        scored = select(JobScore.job_id).where(JobScore.prompt_version == PROMPT_VERSION)
+        jobs = (await session.scalars(visible_feed_query().where(
+            Job.status == ApplicationStatus.DISCOVERED, Job.id.not_in(scored))
+            .order_by(Job.first_seen_at.desc()).limit(limit))).all()
+        run.inc("to_score", len(jobs))
+        for job in jobs:
+            try:
+                r = await score_job(llm, resume=resume, resume_vec=resume_vec, targets=targets,
+                                    title=job.title, company=job.company_name, location=job.location,
+                                    description=job.description, weights=weights)
+            except LLMError as exc:
+                run.error(f"{job.title[:40]}: {exc}"[:300])
+                if "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc):
+                    break  # out of free quota for now; the next run continues
+                continue
+            session.add(JobScore(job_id=job.id, score=r.score, breakdown=r.breakdown, reasons=r.reasons,
+                                 matched_skills=r.matched_skills, missing_skills=r.missing_skills,
+                                 red_flags=r.red_flags, model=llm.usage.by_call[-1]["model"],
+                                 prompt_version=PROMPT_VERSION))
+            job.required_skills = r.assessment.required_skills
+            job.preferred_skills = r.assessment.preferred_skills
+            await session.commit()
+            run.inc("scored")
+        run.inc("llm_calls", llm.usage.calls)
+        run.inc("llm_input_tokens", llm.usage.input_tokens)
+        run.inc("llm_output_tokens", llm.usage.output_tokens)
+        return run.counts
+
+
+RUNNERS["scoring"] = run_scoring
