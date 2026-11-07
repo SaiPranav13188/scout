@@ -70,3 +70,32 @@ def in_quiet_hours(now: datetime, quiet: dict, tz_name: str = "Asia/Kolkata") ->
     if start <= end:
         return start <= local < end
     return local >= start or local < end
+
+
+def next_runs(now: datetime, schedule: dict) -> dict[str, datetime]:
+    """When each scheduled task is next due (for the Agent health page). The cloud cron ticks about
+    every 10 minutes, so a task runs on the first tick at or after this time."""
+    tz = ZoneInfo(schedule.get("timezone", "Asia/Kolkata"))
+    local = now.astimezone(tz)
+    minutes = schedule.get("ingest_interval_minutes")
+    hours = minutes / 60 if minutes else schedule.get("ingest_interval_hours", 4)
+
+    def next_interval(h: float) -> datetime:
+        seconds = max(1, int(h * 3600))
+        return datetime.fromtimestamp((int(now.timestamp()) // seconds + 1) * seconds, UTC)
+
+    def next_daily(at: str) -> datetime:
+        t = datetime.combine(local.date(), _hhmm(at), tz)
+        return (t if t > local else t + timedelta(days=1)).astimezone(UTC)
+
+    disc_day = int(schedule.get("discovery_weekday", 6))
+    disc = datetime.combine(local.date() + timedelta(days=(disc_day - local.weekday()) % 7),
+                            _hhmm(schedule["discovery_time"]), tz)
+    if disc <= local:
+        disc += timedelta(days=7)
+    out = {name: next_interval(hours) for name in ("ingest", "gmail", "scoring")}
+    out["verify"] = next_interval(schedule["verify_interval_hours"])
+    out["discovery"] = disc.astimezone(UTC)
+    out["daily_digest"] = next_daily(schedule["daily_digest_time"])
+    out["evening_summary"] = next_daily(schedule["evening_summary_time"])
+    return out

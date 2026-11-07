@@ -173,4 +173,13 @@ Seven such searches are now on the Saved searches page (LinkedIn and Naukri, Ind
 
 ## Phase 4: Tailoring + validation (spec heading kept for reference)
 ## Phase 4b: Autofill Chrome extension (added by you on 2026-11-06; not started)
-## Phase 5: Tracker, follow-ups, health, polish (not started)
+## Phase 5: Tracker, follow-ups, health, polish (2026-11-07)
+
+| Item | Status |
+|---|---|
+| Pipeline page: Applied / Interview / Offer / Rejected, notes, follow-up date, move, undo, open job, "resume you used" | done; checked in a browser |
+| Follow-up reminders: 7 days after "applied" (setting `notifications.follow_up_days`), due ones named in the evening summary and on the page | done, tested |
+| Agent health: per worker last success, next run, 24 h runs / failures / retries, last error; Gemini calls and tokens (24 h) | done; checked in a browser |
+| Settings, evening summary, error alerts (one per worker per hour), restart-safe slots, no duplicate notifications | done earlier (Phase 1-2), tested |
+| Langfuse tracing | not done: needs Langfuse keys (docs/SETUP.md); LLM calls, tokens and errors are recorded in agent_runs meanwhile |
+| Load / worker-crash tests (spec §13.8) | partly: retry-the-same-slot and failed-send-retry tests exist; no Redis restart test (production runs without Redis) |

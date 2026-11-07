@@ -2,7 +2,7 @@
 
 import { devAuthToken, getSupabase } from "./supabase"
 import type {
-  AgentRun, CompanyRow, Contact, FactCheck, JobDetail, JobFilters, JobLabel, JobPage, JobStatus, LabelSummary,
+  AgentRun, ApplicationRow, HealthSummary, CompanyRow, Contact, FactCheck, JobDetail, JobFilters, JobLabel, JobPage, JobStatus, LabelSummary,
   ResumeData, ResumeOverview, ResumeVersion, SavedSearch, Stats, TailoredResume,
 } from "./types"
 
@@ -101,6 +101,10 @@ export const api = {
   activateResume: (v: number) => request<ResumeOverview>(`/api/resume/versions/${v}/activate`, { method: "POST" }),
   tailoredForJob: (jobId: string) => request<TailoredResume[]>(`/api/jobs/${jobId}/resumes`),
   tailorForJob: (jobId: string) => request<TailoredResume>(`/api/jobs/${jobId}/resume`, { method: "POST" }),
+  applications: () => request<ApplicationRow[]>("/api/applications"),
+  updateApplication: (jobId: string, b: { status?: string; notes?: string; follow_up_at?: string; clear_follow_up?: boolean }) =>
+    request<ApplicationRow>(`/api/applications/${jobId}`, { method: "PATCH", body: JSON.stringify(b) }),
+  healthSummary: () => request<HealthSummary>("/api/health/summary"),
   tailoredAll: () => request<TailoredResume[]>("/api/resumes"),
   uploadResume: (file: File) => {
     const body = new FormData()

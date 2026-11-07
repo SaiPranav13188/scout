@@ -575,3 +575,49 @@ async def test_telegram_resume_button_sends_pdf(client, session, monkeypatch):
     stranger = {"callback_query": {"id": "c10", "data": f"resume:{job.id}", "message": {"chat": {"id": 7}}}}
     await client.post("/telegram/webhook", json=stranger, headers=ok)
     assert doc.call_count == 2
+
+
+# ------------------------------------------------------------------ pipeline + health (Phase 5)
+
+async def test_pipeline_follow_ups_notes_and_moves(client, session):
+    await _seed(session)
+    items = (await client.get("/api/jobs", headers=_auth())).json()["items"]
+    a, b = items[0]["id"], items[1]["id"]
+    await client.post(f"/api/jobs/{a}/status", json={"status": "applied"}, headers=_auth())
+    await client.post(f"/api/jobs/{b}/status", json={"status": "skipped"}, headers=_auth())
+    apps = (await client.get("/api/applications", headers=_auth())).json()
+    assert [x["job_id"] for x in apps] == [a]  # skipped jobs aren't in the pipeline
+    first = apps[0]
+    gap = datetime.fromisoformat(first["follow_up_at"]) - datetime.fromisoformat(first["applied_at"])
+    assert round(gap.total_seconds() / 86400) == 7 and first["follow_up_due"] is False
+
+    r = (await client.patch(f"/api/applications/{a}", json={"status": "interview", "notes": " HR call Tue "},
+                            headers=_auth())).json()
+    assert r["status"] == "interview" and r["notes"] == "HR call Tue"
+    assert r["follow_up_at"] == first["follow_up_at"]  # moving columns keeps my reminder
+    soon = (datetime.now(UTC)).isoformat()
+    assert (await client.patch(f"/api/applications/{a}", json={"follow_up_at": soon}, headers=_auth())).json()["follow_up_due"]
+    assert (await client.patch(f"/api/applications/{a}", json={"clear_follow_up": True}, headers=_auth())).json()["follow_up_at"] is None
+    assert (await client.patch(f"/api/applications/{b}", json={"notes": "x"}, headers=_auth())).status_code == 200  # skipped row exists
+    assert (await client.patch(f"/api/applications/{a}", json={"status": "hired!"}, headers=_auth())).status_code == 422
+    # Back to "discovered" (undo) leaves the pipeline.
+    await client.patch(f"/api/applications/{a}", json={"status": "discovered"}, headers=_auth())
+    assert (await client.get("/api/applications", headers=_auth())).json() == []
+
+
+async def test_health_summary(client, session):
+    from scout_core.db.models import AgentRun
+    now = datetime.now(UTC)
+    session.add_all([
+        AgentRun(worker="ingest", task_key="ingest:a", status="success", started_at=now, finished_at=now,
+                 counts={"fetched": 5}),
+        AgentRun(worker="scoring", task_key="scoring:a", status="error", started_at=now, finished_at=now,
+                 error="429 quota", counts={"llm_calls": 4, "llm_input_tokens": 1000, "llm_output_tokens": 200}, retries=2),
+    ])
+    await session.commit()
+    body = (await client.get("/api/health/summary", headers=_auth())).json()
+    w = {x["worker"]: x for x in body["workers"]}
+    assert w["ingest"]["last_status"] == "success" and w["ingest"]["runs_24h"] == 1
+    assert w["scoring"]["failures_24h"] == 1 and w["scoring"]["retries_24h"] == 2 and "429" in w["scoring"]["last_error"]
+    assert datetime.fromisoformat(w["ingest"]["next_due_at"]) > now
+    assert body["llm_24h"] == {"llm_calls": 4, "llm_input_tokens": 1000, "llm_output_tokens": 200}

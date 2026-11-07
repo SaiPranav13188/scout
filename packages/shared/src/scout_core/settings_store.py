@@ -29,6 +29,7 @@ DEFAULTS: dict[str, Any] = {
         "instant_alerts_enabled": True,  # one Telegram message per batch of new relevant jobs
         "instant_alert_max_jobs": 8,     # jobs listed in full per message; the rest are counted
         "instant_alert_min_score": 85,   # used once scoring exists (Phase 3)
+        "follow_up_days": 7,             # reminder this many days after I mark a job applied
     },
     "sources": {"greenhouse": True, "lever": True, "ashby": True, "gmail_alerts": True, "adzuna": False},
     # Newest alert email already processed (Gmail internalDate, ms). Managed by the worker.

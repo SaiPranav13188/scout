@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scout_core.config import get_settings
-from scout_core.db.models import AgentRun, Company, CompanyWatchlist, Job
+from scout_core.db.models import AgentRun, Application, Company, CompanyWatchlist, Job
 from scout_core.db.session import worker_session
 from scout_core.discovery import YC_DATASET_URL, RobotsCache, discover_boards, yc_seeds
 from scout_core.http import PoliteClient
@@ -235,6 +235,11 @@ async def run_evening_summary(slot_key: str) -> dict:
         if notif_id is None:
             return run.counts
         stats = await today_stats(session)
+        due = (await session.execute(select(Job.title, Job.company_name, Application.applied_at, Application.status)
+                                     .join(Application, Application.job_id == Job.id).where(
+            Application.follow_up_at.is_not(None), Application.follow_up_at <= datetime.now(UTC) + timedelta(days=1),
+            Application.status.in_([ApplicationStatus.APPLIED, ApplicationStatus.INTERVIEW]))
+            .order_by(Application.follow_up_at).limit(8))).all()
         errors = await session.scalar(select(AgentRun).where(
             AgentRun.status == "error", AgentRun.started_at > datetime.now(UTC) - timedelta(hours=24)).limit(1))
         text = (f"🌙 <b>Evening summary</b>\n"
@@ -242,6 +247,8 @@ async def run_evening_summary(slot_key: str) -> dict:
                 f"Marked applied (24h): {stats['applied_24h']}\n"
                 f"Follow-ups due: {stats['follow_ups_due']}\n"
                 f"Waiting in your feed: {stats['open_in_feed']}"
+                + "".join(f"\n  • {html.escape(t)} at {html.escape(c)}"
+                          + (f" (applied {(datetime.now(UTC) - a).days} days ago)" if a else "") for t, c, a, _ in due)
                 + ("\n⚠️ Some worker runs failed today. See Agent health." if errors else ""))
         try:
             await tg.send(get_settings().telegram_chat_id, text)

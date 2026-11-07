@@ -178,3 +178,19 @@ async def test_site_linking_many_boards_is_not_a_careers_page(httpserver):
     async with PoliteClient(min_interval_per_host=0, max_retries=0) as c:
         boards = await discover_boards(c, RobotsCache(c, "test"), httpserver.url_for("/"), "Vector")
     assert boards == []
+
+
+def test_next_runs():
+    from datetime import UTC, datetime
+    from zoneinfo import ZoneInfo
+
+    from scout_core.schedule import next_runs
+    sched = {"timezone": "Asia/Kolkata", "ingest_interval_minutes": 10, "verify_interval_hours": 12,
+             "discovery_weekday": 6, "discovery_time": "03:00", "daily_digest_time": "08:00",
+             "evening_summary_time": "20:00"}
+    now = datetime(2026, 11, 7, 9, 3, tzinfo=ZoneInfo("Asia/Kolkata"))  # Saturday 09:03 IST
+    n = {k: v.astimezone(ZoneInfo("Asia/Kolkata")) for k, v in next_runs(now.astimezone(UTC), sched).items()}
+    assert (n["ingest"].hour, n["ingest"].minute) == (9, 10)
+    assert n["daily_digest"].date().isoformat() == "2026-11-08" and n["daily_digest"].hour == 8
+    assert n["evening_summary"].date().isoformat() == "2026-11-07" and n["evening_summary"].hour == 20
+    assert n["discovery"].date().isoformat() == "2026-11-08" and n["discovery"].hour == 3  # Sunday

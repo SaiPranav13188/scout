@@ -101,7 +101,12 @@ async def set_status(session: AsyncSession, job_id: uuid.UUID, status: Applicati
     now = datetime.now(UTC)
     values: dict[str, Any] = {"job_id": job_id, "status": status, "platform": job.source}
     if status == ApplicationStatus.APPLIED:
+        from scout_core.settings_store import get_setting
         values["applied_at"] = now
+        days = int((await get_setting(session, "notifications")).get("follow_up_days", 7) or 0)
+        existing = await session.scalar(select(Application.follow_up_at).where(Application.job_id == job_id))
+        if days > 0 and existing is None:
+            values["follow_up_at"] = now + timedelta(days=days)
     if notes is not None:
         values["notes"] = notes
     update_values = {k: v for k, v in values.items() if k != "job_id"}

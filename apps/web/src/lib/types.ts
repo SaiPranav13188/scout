@@ -261,3 +261,42 @@ export interface TailoredResume {
   job_title?: string
   company?: string
 }
+
+// ------------------------------------------------------------------ pipeline + health (routes/pipeline.py)
+
+export type PipelineStatus = "applied" | "interview" | "offer" | "rejected"
+
+export interface ApplicationRow {
+  job_id: string
+  title: string
+  company: string
+  location: string | null
+  apply_url: string
+  source: string
+  status: PipelineStatus
+  applied_at: string | null
+  notes: string | null
+  follow_up_at: string | null
+  follow_up_due: boolean
+  updated_at: string
+  resume_id: string | null
+}
+
+export interface WorkerHealth {
+  worker: string
+  last_status: string | null
+  last_started_at: string | null
+  last_error: string | null
+  last_success_at: string | null
+  next_due_at: string | null
+  runs_24h: number
+  failures_24h: number
+  retries_24h: number
+}
+
+export interface HealthSummary {
+  paused: boolean
+  workers: WorkerHealth[]
+  llm_24h: { llm_calls: number; llm_input_tokens: number; llm_output_tokens: number }
+  llm_cost_note: string
+}

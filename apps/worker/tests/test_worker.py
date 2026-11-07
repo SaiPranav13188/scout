@@ -401,3 +401,22 @@ async def test_unclear_job_with_fresher_quote_reaches_feed(session, db_url, monk
     assert (await work.check_unclear_experience(fake))["fresher_ok"] == 1
     await session.refresh(job)
     assert job.experience_unclear is False and job.passed_filters
+
+
+@pytest.mark.db
+@respx.mock
+async def test_evening_summary_names_due_follow_ups(session, db_url, monkeypatch):
+    from scout_core.db.models import Application, Job
+    from scout_core.services import set_status
+    from scout_core.types import ApplicationStatus
+    await _alert_env(session, db_url, monkeypatch)
+    await _seed_visible_job(session, "AI Engineer", "1")
+    job = await session.scalar(select(Job))
+    await set_status(session, job.id, ApplicationStatus.APPLIED, actor="me")
+    app = await session.scalar(select(Application))
+    app.follow_up_at = datetime.now(UTC)
+    await session.commit()
+    sent = respx.post(url__regex=r".*/sendMessage").mock(return_value=httpx.Response(200, json={"ok": True, "result": {}}))
+    await work.run_evening_summary("evening_summary:2026-11-07")
+    text = __import__("json").loads(sent.calls[0].request.content)["text"]
+    assert "Follow-ups due: 1" in text and "AI Engineer at Acme AI" in text and "applied 0 days ago" in text

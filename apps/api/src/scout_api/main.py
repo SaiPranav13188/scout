@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from scout_api.auth import require_owner
 from scout_api.deps import api_limit
-from scout_api.routes import jobs, meta, resume, tailored, telegram
+from scout_api.routes import jobs, meta, pipeline, resume, tailored, telegram
 from scout_core.config import get_settings
 
 structlog.configure(processors=[structlog.processors.TimeStamper(fmt="iso"),
@@ -30,6 +30,7 @@ app.include_router(jobs.labels_router, dependencies=owner_only)
 app.include_router(meta.router, dependencies=owner_only)
 app.include_router(resume.router, dependencies=owner_only)
 app.include_router(tailored.router, dependencies=owner_only)
+app.include_router(pipeline.router, dependencies=owner_only)
 app.include_router(telegram.router)  # authenticated by Telegram's secret header instead
 
 
