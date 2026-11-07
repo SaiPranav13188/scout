@@ -22,7 +22,7 @@ Last updated: 2026-11-06
 | API: Supabase JWT (JWKS) auth, owner-only, rate limit, audit log | tests with real ES256 tokens (expired, wrong issuer, wrong user rejected) |
 | Dashboard: Today feed, details panel, ⌘K palette, keyboard shortcuts, undo, swipe, Startups, Saved searches, Agent health, Settings, login | lint + typecheck + production build pass; screenshots reviewed desktop + mobile; 0 console errors |
 
-**Test totals:** 240 Python tests passing, `ruff` clean, web lint/typecheck/build clean.
+**Test totals:** 240 Python tests passing (Phase 1; 265 as of 2026-11-07), `ruff` clean, web lint/typecheck/build clean.
 
 ### Not done / not verified yet (honest list)
 
@@ -89,15 +89,51 @@ companies use Keka, Zoho Recruit or Darwinbox, which have no documented public j
 | Gemini provider (structured JSON, untrusted-data wrapping, injection detection, retries, per-model fallback) | done; models chosen from the live model list for this key |
 | Master resume v1: PDF text, contact details redacted locally, Gemini structuring, plain-code fact check | done; 41 skills, 3 projects, 0 unsupported items |
 | Match score (skills overlap + embeddings + Gemini rubric), shown in dashboard, Best-fit sort, Telegram | done; 33 jobs scored so far |
-| Labelling (apply/maybe/no) for the eval set | UI live; waiting for ~40 labels |
-| Eval: precision/recall vs labels | not started (needs labels) |
-| Resume review/edit UI | not started |
+| Labelling (apply/maybe/no) for the eval set | UI live; waiting for ~40 labels (0 so far) |
+| Eval: precision/recall vs labels | built: `cli match-eval` (precision/recall/false positives per score band, agreement, AUC vs the plain role-fit baseline); waiting for labels |
+| Resume Manager page (review/edit, upload PDF, versions) | done; checked in a browser against a local copy of resume v1 |
+| Re-scoring when the resume changes | done: each score stores the profile fingerprint it used; outdated scores are refreshed after new jobs, within the per-run limit |
 | Cloud scoring | waiting for GEMINI_API_KEY GitHub secret |
+| Live database migration 0005 | **waiting for you** (blocked for me by Claude Code's safety rules; commands in "Next steps for you") |
+
+**Resume Manager (2026-11-07):** every section of the parsed resume is editable (contact, headline,
+skills by group, projects with tech and bullets, experience, education, achievements, certifications).
+Saving creates a new version; earlier versions are never changed and any of them can be made active again.
+A live fact check marks every skill, tool, number and date that isn't in the uploaded PDF (amber), and
+saving is still allowed because I'm the source of truth. The redacted PDF text is stored with each version
+for this check (and for the Phase 4 validator); contact details stay out of it and are never sent to Gemini.
+Uploading a new PDF from the page parses it with Gemini (5 MB limit; scanned/encrypted PDFs get a clear
+error). An edit started from an older version is refused instead of overwriting newer work.
+
+Fixed along the way: (1) the feed joined every score row of a job, so a re-scored job would have appeared
+twice; the feed, digests and alerts now use the newest score. (2) The fact check matched numbers as
+substrings, so an invented "3" passed because "8.3" was in the PDF; numbers now match whole. (3) The phone
+pattern dropped an opening bracket ("+91) 9030…") and kept the same number twice in two formats; future
+uploads keep one. Your v1 still shows both; delete the extra one when you review.
 
 **Found while running it:** the free tier has a daily request limit per model (gemini-3.5-flash hit it after
 ~60 calls); gemini-3.8-flash was often overloaded (503); the SDK's hidden retries turned one call into ~9
 minutes (now off). LinkedIn alert jobs are title-only, so their scores (43-60) are rough; jobs with full
 descriptions score far more meaningfully.
+
+### Feed: only confirmed entry-level jobs (2026-11-07)
+
+The default feed, stats, Telegram digest and instant alerts now exclude jobs whose experience level is
+unclear (title-only alert emails); an "Experience unclear" chip shows them on request. Alert emails no
+longer stamp the email's arrival time as the posting time ("Posted date not given" unless the site states
+it). LinkedIn alerts from a search filtered to Entry level / Internship are trusted as entry-level.
+
+### Next steps for you
+
+1. Apply migration 0005 to the live database (adds `job_scores.profile_hash`; one active resume version):
+   `cd packages/shared && set -a && source ../../.env && set +a && uv run alembic upgrade head`
+2. Upgrade resume v1 (stores its redacted text for the fact check; marks the 38 existing scores as made from
+   v1 so they aren't re-scored). Dry run first, then apply:
+   `uv run python -m scout_worker.cli resume-backfill private/resume.pdf` and again with `--apply`
+3. Then push (`git push`): the cloud schedule runs the code on GitHub, and the new scoring code needs that column.
+4. Open Resume in the dashboard, fix what the parser got wrong (e.g. the duplicate phone, "redis with BullMQ
+   queue." as a tool), and save once.
+5. Label ~40 jobs (apply / maybe / no), then `uv run python -m scout_worker.cli match-eval`.
 
 ## Phase 4: Tailoring + validation (not started)
 ## Phase 4b: Autofill Chrome extension (added by you on 2026-11-06; not started)

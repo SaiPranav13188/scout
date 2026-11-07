@@ -206,6 +206,10 @@ class MasterResume(Base):
     version: Mapped[int] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="false")
     uploaded_at: Mapped[datetime] = _created()
+    __table_args__ = (
+        UniqueConstraint("version", name="uq_master_resume_version"),
+        Index("uq_master_resume_one_active", "is_active", unique=True, postgresql_where=text("is_active")),
+    )
 
 
 class JobScore(Base):
@@ -220,6 +224,9 @@ class JobScore(Base):
     red_flags: Mapped[list[Any] | None] = mapped_column(JSONB)
     model: Mapped[str] = mapped_column(Text)
     prompt_version: Mapped[str] = mapped_column(Text)
+    # Fingerprint of the profile (resume + target roles) the score was computed from; a new
+    # fingerprint means the score is out of date and the job gets re-scored.
+    profile_hash: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created()
     __table_args__ = (
         CheckConstraint("score BETWEEN 0 AND 100", name="ck_score_range"),

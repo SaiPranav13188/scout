@@ -213,3 +213,120 @@ async def test_gmail_skips_cleanly_without_connection_or_key(session, db_url, mo
     await session.commit()
     monkeypatch.setattr(s, "encryption_key", None)
     assert await work.run_gmail() == {"skipped": "encryption_key_missing"}
+
+
+class _FakeLLM:
+    """Stands in for Gemini: fixed rubric answer, fixed embeddings, records which jobs were scored."""
+
+    def __init__(self):
+        from scout_core.llm import Usage
+        self.usage, self.jobs = Usage(), []
+
+    async def json(self, schema, prompt, *, purpose, temperature=0.1):
+        self.jobs.append(prompt.split("Title: ")[1].split("\n")[0])
+        self.usage.calls += 1
+        self.usage.by_call.append({"model": "fake-model"})
+        return schema(required_skills=["Python"], rubric_score=80, reasons=["fits"])
+
+    async def embed(self, texts, *, purpose, dims=768):
+        return [[1.0, 0.0] for _ in texts]
+
+
+@pytest.mark.db
+async def test_scoring_rescores_jobs_after_resume_change(session, db_url, monkeypatch):
+    from scout_core.db.models import JobScore, MasterResume
+    from scout_core.llm import Gemini
+    from scout_core.resume_store import add_version
+    s = get_settings()
+    monkeypatch.setattr(s, "database_url", db_url)
+    fake = _FakeLLM()
+    monkeypatch.setattr(Gemini, "from_settings", classmethod(lambda cls: fake))
+    assert await work.run_scoring("manual:x") == {"skipped": "no_master_resume"}
+
+    resume = {"skills": [{"category": "Languages", "items": ["Python"]}], "projects": [], "education": []}
+    session.add(MasterResume(file_url="local:r.pdf", version=1, is_active=True, parsed=resume))
+    await session.commit()
+    await _seed_visible_job(session, "AI Engineer", "1")
+    await _seed_visible_job(session, "Backend Engineer", "2")
+
+    await work.run_scoring("manual:1", limit=10)
+    assert sorted(fake.jobs) == ["AI Engineer", "Backend Engineer"]
+    await work.run_scoring("manual:2", limit=10)
+    assert len(fake.jobs) == 2  # nothing new, nothing re-scored
+
+    # A resume edit that changes the profile makes both scores outdated; a new job comes first.
+    await add_version(session, file_url="edit:1", parsed={**resume, "skills": [
+        {"category": "Languages", "items": ["Python", "Go"]}]})
+    await session.commit()
+    await _seed_visible_job(session, "ML Engineer", "3")
+    fake.jobs.clear()
+    await work.run_scoring("manual:3", limit=1)
+    assert fake.jobs == ["ML Engineer"]
+    await work.run_scoring("manual:4", limit=10)
+    assert sorted(fake.jobs) == ["AI Engineer", "Backend Engineer", "ML Engineer"]
+    hashes = (await session.execute(select(JobScore.profile_hash, func.count()).group_by(JobScore.profile_hash))).all()
+    assert sorted(n for _, n in hashes) == [2, 3] and all(h for h, _ in hashes)
+
+    # A correction that doesn't touch what scoring reads (contact, a fixed typo elsewhere) costs no quota.
+    await add_version(session, file_url="edit:2", parsed={**resume, "skills": [
+        {"category": "Languages", "items": ["Python", "Go"]}], "contact": {"name": "Jane"}, "achievements": ["x"]})
+    await session.commit()
+    fake.jobs.clear()
+    await work.run_scoring("manual:5", limit=10)
+    assert fake.jobs == []
+
+
+@pytest.mark.db
+async def test_match_eval_uses_newest_score_and_my_labels(session, db_url, monkeypatch):
+    from scout_core.db.models import Job, JobLabel, JobScore
+    from scout_core.matching import PROMPT_VERSION
+    monkeypatch.setattr(get_settings(), "database_url", db_url)
+    await _seed_visible_job(session, "AI Engineer", "1")
+    await _seed_visible_job(session, "Backend Engineer", "2")
+    await _seed_visible_job(session, "Data Analyst", "3")
+    ids = {t: i for i, t in (await session.execute(select(Job.id, Job.title))).all()}
+    session.add_all([
+        JobScore(job_id=ids["AI Engineer"], score=40, model="m", prompt_version=PROMPT_VERSION),  # older
+        JobScore(job_id=ids["Backend Engineer"], score=30, model="m", prompt_version=PROMPT_VERSION),
+        JobLabel(job_id=ids["AI Engineer"], label="apply"), JobLabel(job_id=ids["Backend Engineer"], label="no"),
+        JobLabel(job_id=ids["Data Analyst"], label="no"),  # labelled, never scored
+    ])
+    await session.commit()
+    session.add(JobScore(job_id=ids["AI Engineer"], score=91, model="m", prompt_version=PROMPT_VERSION))
+    await session.commit()
+    rep = await work.match_eval()
+    assert rep.labelled == 3 and rep.scored == 2 and rep.auc == 1.0
+    at85 = next(t for t in rep.thresholds if t["floor"] == 85)
+    assert at85["precision"] == 1.0 and at85["recall"] == 1.0  # used 91, not the older 40
+
+
+@pytest.mark.db
+async def test_resume_backfill_stamps_old_scores_once(session, db_url, monkeypatch, tmp_path):
+    from scout_core.db.models import Job, JobScore, MasterResume
+    from scout_core.matching import PROMPT_VERSION
+    from scout_core.resume import ResumeFileError
+    monkeypatch.setattr(get_settings(), "database_url", db_url)
+    resume = {"skills": [{"category": "L", "items": ["Python"]}], "contact": {"emails": ["me@x.com"]},
+              "source_text": "Skills: Python"}
+    session.add(MasterResume(file_url="local:r.pdf", version=1, is_active=True, parsed=resume))
+    await _seed_visible_job(session, "AI Engineer", "1")
+    job_id = await session.scalar(select(Job.id))
+    session.add(JobScore(job_id=job_id, score=70, model="m", prompt_version=PROMPT_VERSION))
+    await session.commit()
+    dry = await work.resume_backfill(str(tmp_path / "unused.pdf"))
+    assert dry == {"version": 1, "source_text": "already stored", "scores_to_stamp": 1, "applied": False}
+    await work.resume_backfill(str(tmp_path / "unused.pdf"), apply=True)
+    assert (await work.resume_backfill(str(tmp_path / "unused.pdf")))["scores_to_stamp"] == 0
+    # The stamped score counts as current: nothing to re-score.
+    fake = _FakeLLM()
+    from scout_core.llm import Gemini
+    monkeypatch.setattr(Gemini, "from_settings", classmethod(lambda cls: fake))
+    await work.run_scoring("manual:x", limit=5)
+    assert fake.jobs == []
+    # Missing source text + a file that isn't the same resume (or isn't a PDF) is refused.
+    row = await session.scalar(select(MasterResume))
+    row.parsed = {k: v for k, v in resume.items() if k != "source_text"}
+    await session.commit()
+    (tmp_path / "x.pdf").write_bytes(b"not a pdf")
+    with pytest.raises(ResumeFileError):
+        await work.resume_backfill(str(tmp_path / "x.pdf"))

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scout_api.deps import db
@@ -71,7 +72,9 @@ async def list_jobs(
 
     total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
     posted = func.coalesce(Job.posted_at, Job.first_seen_at)
-    scored = select(JobScore.job_id, JobScore.score).where(JobScore.prompt_version == PROMPT_VERSION).subquery()
+    # One row per job: its newest score (a job is re-scored when my resume changes).
+    scored = (select(JobScore.job_id, JobScore.score).where(JobScore.prompt_version == PROMPT_VERSION)
+              .ext(distinct_on(JobScore.job_id)).order_by(JobScore.job_id, JobScore.created_at.desc()).subquery())
     # "Best fit": the resume match score when a job has one, otherwise the plain-code role fit.
     fit = func.coalesce(scored.c.score, Job.relevance_score)
     order = [posted.desc(), fit.desc()] if sort == "newest" else [fit.desc(), posted.desc()]

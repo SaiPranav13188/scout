@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import structlog
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scout_core.config import get_settings
@@ -454,24 +455,16 @@ async def save_master_resume(path: str) -> dict:
     """Parse a resume file into a new master_resume version (older versions are kept, never edited)."""
     from pathlib import Path
 
-    from scout_core.db.models import MasterResume
     from scout_core.llm import Gemini
-    from scout_core.resume import extract_text, fact_check, parse_resume, split_contact
+    from scout_core.resume import extract_text, parse_resume_text
+    from scout_core.resume_store import add_version
 
-    raw = extract_text(Path(path))
-    contact, redacted = split_contact(raw)
     llm = Gemini.from_settings()
-    data = await parse_resume(llm, redacted)
-    check = fact_check(data, raw)
+    parsed = await parse_resume_text(llm, extract_text(Path(path)))
     async with worker_session() as session:
-        version = (await session.scalar(select(func.max(MasterResume.version)))) or 0
-        await session.execute(update(MasterResume).values(is_active=False))
-        row = MasterResume(file_url=f"local:{Path(path).name}", version=version + 1, is_active=True,
-                           parsed={**data.model_dump(), "contact": contact.model_dump(), "fact_check": check,
-                                   "parsed_with": llm.usage.by_call[-1]["model"], "reviewed": False})
-        session.add(row)
+        row = await add_version(session, file_url=f"local:{Path(path).name}", parsed=parsed)
         await session.commit()
-        return {"version": row.version, "fact_check": check, "usage": llm.usage.by_call}
+        return {"version": row.version, "fact_check": parsed["fact_check"], "usage": llm.usage.by_call}
 
 
 async def _with_db_retry(fn, attempts: int = 3):
@@ -490,27 +483,33 @@ async def _with_db_retry(fn, attempts: int = 3):
 
 
 async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
-    """Score feed jobs that have no score yet against the active master resume.
+    """Score feed jobs against the active master resume: unscored jobs first, then jobs whose
+    score was computed from an older resume or older target roles (different profile fingerprint).
 
     No database connection is held while waiting for Gemini: reads happen in one short session,
     and each score is saved in its own fresh session (with retries if the connection drops).
     """
-    from scout_core.db.models import JobScore, MasterResume
+    from scout_core.db.models import JobScore
     from scout_core.llm import Gemini, LLMError, LLMNotConfigured
     from scout_core.matching import PROMPT_VERSION, Weights, profile_text, score_job
-    from scout_core.resume import ResumeData
+    from scout_core.resume import profile_fingerprint
+    from scout_core.resume_store import active_resume, resume_data
 
     async def load(session):
-        master = await session.scalar(select(MasterResume).where(MasterResume.is_active.is_(True)))
+        master = await active_resume(session)
         if master is None:
             return None
         cfg = await get_setting(session, "matching")
-        scored = select(JobScore.job_id).where(JobScore.prompt_version == PROMPT_VERSION)
+        resume = resume_data(master.parsed or {})
+        fingerprint = profile_fingerprint(profile_text(resume, cfg.get("target_roles", [])), PROMPT_VERSION)
+        current = select(JobScore.job_id).where(JobScore.prompt_version == PROMPT_VERSION,
+                                                JobScore.profile_hash == fingerprint)
+        has_any = select(JobScore.job_id).where(JobScore.prompt_version == PROMPT_VERSION)
         jobs = (await session.execute(visible_feed_query(include_unclear=True).where(
-            Job.status == ApplicationStatus.DISCOVERED, Job.id.not_in(scored))
-            .order_by(Job.experience_unclear, Job.first_seen_at.desc()).limit(limit)
+            Job.status == ApplicationStatus.DISCOVERED, Job.id.not_in(current))
+            .order_by(Job.id.in_(has_any), Job.experience_unclear, Job.first_seen_at.desc()).limit(limit)
             .with_only_columns(Job.id, Job.title, Job.company_name, Job.location, Job.description))).all()
-        return master.parsed, cfg, [tuple(j) for j in jobs]
+        return resume, fingerprint, cfg, [tuple(j) for j in jobs]
 
     if slot_key and not slot_key.startswith("manual:"):
         async def per_run(s):
@@ -519,14 +518,13 @@ async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
     loaded = await _with_db_retry(load)
     if loaded is None:
         return {"skipped": "no_master_resume"}
-    parsed, cfg, jobs = loaded
+    resume, fingerprint, cfg, jobs = loaded
     try:
         llm = Gemini.from_settings()
     except LLMNotConfigured:
         return {"skipped": "gemini_not_configured"}
 
     async with worker_session() as session, track_run(session, "scoring", slot_key) as run:
-        resume = ResumeData.model_validate({k: v for k, v in parsed.items() if k in ResumeData.model_fields})
         weights = Weights(**cfg.get("weights", {}))
         targets = cfg.get("target_roles", [])
         run.inc("to_score", len(jobs))
@@ -546,7 +544,7 @@ async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
                 s.add(JobScore(job_id=job_id, score=r.score, breakdown=r.breakdown, reasons=r.reasons,
                                matched_skills=r.matched_skills, missing_skills=r.missing_skills,
                                red_flags=r.red_flags, model=llm.usage.by_call[-1]["model"],
-                               prompt_version=PROMPT_VERSION))
+                               prompt_version=PROMPT_VERSION, profile_hash=fingerprint))
                 await s.execute(update(Job).where(Job.id == job_id).values(
                     required_skills=r.assessment.required_skills, preferred_skills=r.assessment.preferred_skills))
                 await s.commit()
@@ -560,3 +558,61 @@ async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
 
 
 RUNNERS["scoring"] = run_scoring
+
+
+async def resume_backfill(pdf_path: str, apply: bool = False) -> dict:
+    """One-time upgrade for resume versions saved before 2026-11-07 (safe to run again).
+
+    - Stores the redacted text of the PDF on the active version if it is missing (needed by the
+      fact check); only if the PDF's emails match the stored ones, i.e. it is the same resume.
+    - Stamps scores that have no profile fingerprint with the active resume's fingerprint, so
+      they aren't all re-scored (they were computed from it). Dry run unless apply=True.
+    """
+    from pathlib import Path
+
+    from scout_core.db.models import JobScore
+    from scout_core.matching import PROMPT_VERSION, profile_text
+    from scout_core.resume import extract_text, fact_check, profile_fingerprint, split_contact
+    from scout_core.resume_store import active_resume, resume_data
+
+    async with worker_session() as session:
+        row = await active_resume(session)
+        if row is None:
+            return {"skipped": "no active resume"}
+        parsed = dict(row.parsed or {})
+        out: dict = {"version": row.version}
+        if not parsed.get("source_text"):
+            contact, redacted = split_contact(extract_text(Path(pdf_path)))
+            if sorted(contact.emails) != sorted((parsed.get("contact") or {}).get("emails", [])):
+                raise ValueError("this PDF's email doesn't match the active resume version; not the same file?")
+            check = fact_check(resume_data(parsed), redacted)
+            out["source_text"] = f"{len(redacted)} characters; fact check {'ok' if check['ok'] else check['unsupported']}"
+            if apply:
+                row.parsed = {**parsed, "source_text": redacted, "fact_check": check}
+        else:
+            out["source_text"] = "already stored"
+        targets = (await get_setting(session, "matching")).get("target_roles", [])
+        fp = profile_fingerprint(profile_text(resume_data(parsed), targets), PROMPT_VERSION)
+        legacy = JobScore.profile_hash.is_(None)
+        out["scores_to_stamp"] = await session.scalar(select(func.count()).select_from(JobScore).where(legacy))
+        if apply:
+            await session.execute(update(JobScore).where(legacy).values(profile_hash=fp))
+            await session.commit()
+        out["applied"] = apply
+        return out
+
+
+async def match_eval(maybe_counts_as_apply: bool = False):
+    """My labels vs the match score (newest score per job). Read-only."""
+    from scout_core.db.models import JobLabel, JobScore
+    from scout_core.match_eval import Example, evaluate
+    from scout_core.matching import PROMPT_VERSION
+
+    latest = (select(JobScore.job_id, JobScore.score).where(JobScore.prompt_version == PROMPT_VERSION)
+              .ext(distinct_on(JobScore.job_id)).order_by(JobScore.job_id, JobScore.created_at.desc()).subquery())
+    async with worker_session() as session:
+        rows = (await session.execute(
+            select(Job.title, Job.company_name, JobLabel.label, latest.c.score, Job.relevance_score)
+            .join(JobLabel, JobLabel.job_id == Job.id).outerjoin(latest, latest.c.job_id == Job.id))).all()
+    return evaluate([Example(title=t, company=c, label=lab, score=sc, baseline=rel or 0)
+                     for t, c, lab, sc, rel in rows], maybe_counts_as_apply=maybe_counts_as_apply)

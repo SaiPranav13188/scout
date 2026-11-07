@@ -266,3 +266,229 @@ async def test_unclear_experience_hidden_unless_asked(client, session):
     assert "Machine Learning Engineer" in [j["title"] for j in shown["items"]]
     stats = (await client.get("/api/stats", headers=_auth())).json()
     assert stats["open_in_feed"] == default["total"]  # Telegram/stats follow the same rule
+
+
+# ------------------------------------------------------------------ resume manager
+
+def _pdf(lines: list[str]) -> bytes:
+    """A minimal real PDF with one text page (enough for pypdf to extract the lines)."""
+    content = "BT /F1 11 Tf 50 780 Td 14 TL " + " ".join(
+        "(" + ln.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)") + ") '" for ln in lines) + " ET"
+    objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R "
+        "/Resources << /Font << /F1 5 0 R >> >> >>",
+        f"<< /Length {len(content)} >>\nstream\n{content}\nendstream",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out, offsets = b"%PDF-1.4\n", []
+    for i, body in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n{body}\nendobj\n".encode()
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offsets)
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return out
+
+
+SOURCE = ("[NAME]\n[EMAIL] | [PHONE]\nB.Tech Computer Science, Example Institute of Technology, 2022 - 2026, CGPA 8.3\n"
+          "Skills: Python, FastAPI, Redis, React\nNagrik - civic complaints app (2025)\n"
+          "Built 6 agents with a BullMQ queue; cut triage time 40%\n")
+
+
+def _parsed(**over):
+    base = {
+        "headline": None, "summary": None,
+        "education": [{"institution": "Example Institute of Technology", "degree": "B.Tech",
+                       "field": "Computer Science", "start": "2022", "end": "2026", "grade": "CGPA 8.3"}],
+        "skills": [{"category": "Languages", "items": ["Python"]},
+                   {"category": "Tools", "items": ["FastAPI", "Redis", "React"]}],
+        "projects": [{"name": "Nagrik", "tech": ["Redis"], "dates": "2025", "link_label": None,
+                      "bullets": ["Built 6 agents with a BullMQ queue; cut triage time 40%"]}],
+        "experience": [], "certifications": [], "achievements": [],
+        "contact": {"name": "Jane Example", "emails": ["jane@example.com"], "phones": [], "links": []},
+        "fact_check": {"ok": True, "unsupported": []}, "source_text": SOURCE,
+        "parsed_with": "gemini-test", "reviewed": False,
+    }
+    return {**base, **over}
+
+
+async def _seed_resume(session, **over):
+    from scout_core.db.models import MasterResume
+    session.add(MasterResume(file_url="local:resume.pdf", version=1, is_active=True, parsed=_parsed(**over)))
+    await session.commit()
+
+
+async def test_resume_empty_state(client):
+    body = (await client.get("/api/resume", headers=_auth())).json()
+    assert body["active"] is None and body["versions"] == []
+    assert (await client.put("/api/resume", json={"base_version": 1, "data": {}, "contact": {}},
+                             headers=_auth())).status_code == 409
+
+
+async def test_resume_review_creates_new_version_and_keeps_the_original(client, session):
+    from scout_core.db.models import MasterResume
+    await _seed_resume(session)
+    body = (await client.get("/api/resume", headers=_auth())).json()
+    active = body["active"]
+    assert active["version"] == 1 and active["reviewed"] is False and active["can_fact_check"]
+    assert active["source"] == "Parsed from resume.pdf"
+    assert "source_text" not in active  # the stored file text isn't sent to the browser
+
+    # Correct a skill group and tidy messy input: blanks dropped, repeats removed, spaces trimmed.
+    data = active["data"]
+    data["skills"][0]["items"] = ["Python", "  python ", "", "FastAPI"]
+    data["projects"][0]["bullets"].append("   ")
+    r = await client.put("/api/resume", json={"base_version": 1, "data": data, "contact": active["contact"]},
+                         headers=_auth())
+    assert r.status_code == 200 and r.json()["saved"] is True
+    new = r.json()["active"]
+    assert new["version"] == 2 and new["reviewed"] and new["edited_from"] == 1
+    assert new["source"] == "Your corrections to version 1"
+    assert new["data"]["skills"][0]["items"] == ["Python", "FastAPI"]
+    assert new["data"]["skills"][1]["items"] == ["Redis", "React"]  # FastAPI listed once, in the first group
+    assert new["data"]["projects"][0]["bullets"] == ["Built 6 agents with a BullMQ queue; cut triage time 40%"]
+    assert [v["version"] for v in r.json()["versions"]] == [2, 1]
+
+    v1 = await session.scalar(select(MasterResume).where(MasterResume.version == 1))
+    await session.refresh(v1)
+    assert v1.is_active is False and v1.parsed == _parsed()  # untouched
+
+    # Saving again with no changes doesn't pile up identical versions.
+    again = await client.put("/api/resume", json={"base_version": 2, "data": new["data"], "contact": new["contact"]},
+                             headers=_auth())
+    assert again.json()["saved"] is False and again.json()["active"]["version"] == 2
+
+    # An edit started from an older version is refused instead of overwriting newer work.
+    stale = await client.put("/api/resume", json={"base_version": 1, "data": data, "contact": active["contact"]},
+                             headers=_auth())
+    assert stale.status_code == 409
+
+
+async def test_resume_review_without_changes_marks_reviewed(client, session):
+    await _seed_resume(session)
+    a = (await client.get("/api/resume", headers=_auth())).json()["active"]
+    r = (await client.put("/api/resume", json={"base_version": 1, "data": a["data"], "contact": a["contact"]},
+                          headers=_auth())).json()
+    assert r["saved"] and r["active"]["version"] == 2 and r["active"]["reviewed"]
+
+
+async def test_resume_fact_check_flags_what_is_not_in_the_file(client, session):
+    await _seed_resume(session)
+    a = (await client.get("/api/resume", headers=_auth())).json()["active"]
+    data = a["data"]
+    data["skills"][0]["items"].append("Kubernetes")
+    data["projects"][0]["bullets"][0] = "Built 9 agents with a BullMQ queue; cut triage time 40%"
+    data["summary"] = "Shipped 3 apps"
+    check = (await client.post("/api/resume/check", json={"data": data}, headers=_auth())).json()
+    assert check["available"] and not check["ok"]
+    joined = " | ".join(check["unsupported"])
+    assert "Kubernetes" in joined and "'9'" in joined and "'3'" in joined
+    assert len(check["unsupported"]) == 3  # 40%, Python etc. are in the file
+    # Saving is allowed (I'm the source of truth), and the warnings stay on the version.
+    r = (await client.put("/api/resume", json={"base_version": 1, "data": data, "contact": a["contact"]},
+                          headers=_auth())).json()
+    assert r["active"]["fact_check"]["ok"] is False and r["versions"][0]["unsupported"] == 3
+
+
+async def test_resume_activate_older_version(client, session):
+    await _seed_resume(session)
+    a = (await client.get("/api/resume", headers=_auth())).json()["active"]
+    a["data"]["headline"] = "AI engineer"
+    await client.put("/api/resume", json={"base_version": 1, "data": a["data"], "contact": a["contact"]},
+                     headers=_auth())
+    r = (await client.post("/api/resume/versions/1/activate", headers=_auth())).json()
+    assert r["active"]["version"] == 1 and [v["is_active"] for v in r["versions"]] == [False, True]
+    assert (await client.post("/api/resume/versions/9/activate", headers=_auth())).status_code == 404
+    old = (await client.get("/api/resume/versions/2", headers=_auth())).json()
+    assert old["data"]["headline"] == "AI engineer" and old["is_active"] is False
+
+
+async def test_resume_upload(client, session, monkeypatch):
+    from scout_api.routes import resume as resume_routes
+    seen = {}
+
+    class FakeLLM:
+        pass
+
+    async def fake_parse(llm, raw):
+        seen["raw"] = raw
+        return _parsed(source_text="redacted")
+
+    monkeypatch.setattr(resume_routes.Gemini, "from_settings", classmethod(lambda cls: FakeLLM()))
+    monkeypatch.setattr(resume_routes, "parse_resume_text", fake_parse)
+    pdf = _pdf(["Jane Example", "Skills: Python, FastAPI, Redis, React, PostgreSQL, Docker, LangGraph",
+                "Nagrik - civic complaints app with six agents, a BullMQ queue and an MCP server",
+                "Haathi - multilingual retrieval augmented generation for government schemes",
+                "B.Tech Computer Science, Example Institute of Technology, 2022 - 2026"])
+    r = await client.post("/api/resume/upload", files={"file": ("my resume.pdf", pdf, "application/pdf")},
+                          headers=_auth())
+    assert r.status_code == 200, r.text
+    assert r.json()["active"]["version"] == 1 and r.json()["active"]["source"] == "Uploaded my resume.pdf"
+    assert "Nagrik - civic complaints app" in seen["raw"]
+
+    not_pdf = await client.post("/api/resume/upload", files={"file": ("cv.pdf", b"hello", "application/pdf")},
+                                headers=_auth())
+    assert not_pdf.status_code == 422 and "isn't a PDF" in not_pdf.json()["detail"]
+    empty = await client.post("/api/resume/upload", files={"file": ("cv.pdf", _pdf(["Hi"]), "application/pdf")},
+                              headers=_auth())
+    assert empty.status_code == 422 and "scanned" in empty.json()["detail"]
+    huge = await client.post("/api/resume/upload", files={"file": ("cv.pdf", b"%PDF" + b"0" * (5 * 1024 * 1024),
+                                                                   "application/pdf")}, headers=_auth())
+    assert huge.status_code == 413
+    assert (await client.get("/api/resume", headers=_auth())).json()["versions"][0]["version"] == 1
+
+
+async def test_resume_upload_without_gemini(client, monkeypatch):
+    from scout_api.routes import resume as resume_routes
+    from scout_core.llm import LLMNotConfigured
+
+    def boom(cls):
+        raise LLMNotConfigured("no key")
+
+    monkeypatch.setattr(resume_routes.Gemini, "from_settings", classmethod(boom))
+    pdf = _pdf(["Skills: Python, FastAPI, Redis, React, PostgreSQL, Docker, LangGraph, LangChain, Pandas",
+                "Nagrik - civic complaints app with six agents, a BullMQ queue and an MCP server, evals",
+                "Haathi - multilingual retrieval augmented generation for government schemes"])
+    r = await client.post("/api/resume/upload", files={"file": ("cv.pdf", pdf, "application/pdf")}, headers=_auth())
+    assert r.status_code == 503 and "GEMINI_API_KEY" in r.json()["detail"]
+
+
+async def test_scores_follow_the_active_resume(client, session):
+    """After a resume edit, old scores count as outdated; the feed shows each job once (newest score)."""
+    import uuid as _uuid
+
+    from scout_core.db.models import JobScore
+    from scout_core.matching import PROMPT_VERSION, profile_text
+    from scout_core.resume import profile_fingerprint
+    from scout_core.resume_store import resume_data
+    from scout_core.settings_store import get_setting
+    await _seed(session)
+    await _seed_resume(session)
+    targets = (await get_setting(session, "matching")).get("target_roles", [])
+    fp1 = profile_fingerprint(profile_text(resume_data(_parsed()), targets), PROMPT_VERSION)
+    items = (await client.get("/api/jobs", headers=_auth())).json()["items"]
+    ai = next(j for j in items if j["title"] == "AI Engineer")
+    session.add(JobScore(job_id=_uuid.UUID(ai["id"]), score=60, breakdown={}, model="m",
+                         prompt_version=PROMPT_VERSION, profile_hash=fp1))
+    await session.commit()
+    assert (await client.get("/api/resume", headers=_auth())).json()["scoring"] == {
+        "current": 1, "outdated": 0, "unscored": 1}
+
+    a = (await client.get("/api/resume", headers=_auth())).json()["active"]
+    a["data"]["skills"][0]["items"].append("React Native")
+    r = (await client.put("/api/resume", json={"base_version": 1, "data": a["data"], "contact": a["contact"]},
+                          headers=_auth())).json()
+    assert r["scoring"] == {"current": 0, "outdated": 1, "unscored": 1}
+
+    # Re-scored against the new resume: the job appears once, with the new score.
+    fp2 = profile_fingerprint(profile_text(resume_data(r["active"]["data"]), targets), PROMPT_VERSION)
+    session.add(JobScore(job_id=_uuid.UUID(ai["id"]), score=88, breakdown={}, model="m",
+                         prompt_version=PROMPT_VERSION, profile_hash=fp2))
+    await session.commit()
+    feed = (await client.get("/api/jobs", params={"sort": "relevance"}, headers=_auth())).json()
+    assert [j["title"] for j in feed["items"]].count("AI Engineer") == 1 and feed["total"] == 2
+    assert feed["items"][0]["title"] == "AI Engineer" and feed["items"][0]["match"]["score"] == 88
+    assert (await client.get("/api/resume", headers=_auth())).json()["scoring"]["current"] == 1

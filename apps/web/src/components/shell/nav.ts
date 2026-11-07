@@ -22,7 +22,7 @@ export const NAV: NavItem[] = [
   { href: "/", label: "Today", icon: Sparkles, shortcut: "G T" },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare, shortcut: "G P", phase: 5 },
   { href: "/startups", label: "Startups", icon: Building2, shortcut: "G C" },
-  { href: "/resume", label: "Resume", icon: FileText, shortcut: "G R", phase: 3 },
+  { href: "/resume", label: "Resume", icon: FileText, shortcut: "G R" },
   { href: "/saved-searches", label: "Saved searches", icon: Bookmark, shortcut: "G S" },
   { href: "/health", label: "Agent health", icon: Activity, shortcut: "G H" },
   { href: "/settings", label: "Settings", icon: Settings, shortcut: "G ," },

@@ -48,8 +48,8 @@ async def latest_scores(session: AsyncSession, ids: list) -> dict:
     if not ids:
         return {}
     rows = (await session.execute(select(JobScore.job_id, JobScore.score).where(
-        JobScore.job_id.in_(ids), JobScore.prompt_version == PROMPT_VERSION))).all()
-    return {r.job_id: r.score for r in rows}
+        JobScore.job_id.in_(ids), JobScore.prompt_version == PROMPT_VERSION).order_by(JobScore.created_at))).all()
+    return {r.job_id: r.score for r in rows}  # newest wins
 
 
 def why_line(job: Job, score: int | None = None) -> str:

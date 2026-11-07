@@ -9,6 +9,10 @@
   uv run python -m scout_worker.cli tick --only discovery
   uv run python -m scout_worker.cli gmail-connect            # one-time Google sign-in (read-only)
   uv run python -m scout_worker.cli gmail-senders            # which job-alert senders are in the inbox
+  uv run python -m scout_worker.cli resume-parse private/resume.pdf
+  uv run python -m scout_worker.cli score 10                 # score up to 10 feed jobs now
+  uv run python -m scout_worker.cli resume-backfill private/resume.pdf [--apply]  # one-time upgrade
+  uv run python -m scout_worker.cli match-eval [--maybe-is-apply]  # match score vs my labels (read-only)
 """
 
 import asyncio
@@ -101,6 +105,12 @@ def main() -> None:
                          indent=2, default=str))
     elif cmd == "score":
         print(json.dumps(asyncio.run(work.run_scoring(stamp, limit=int(args[0]) if args else 25)), indent=2))
+    elif cmd == "resume-backfill":
+        pdf = next((a for a in args if not a.startswith("--")), "private/resume.pdf")
+        print(json.dumps(asyncio.run(work.resume_backfill(pdf, apply="--apply" in args)), indent=2, default=str))
+    elif cmd == "match-eval":
+        from scout_core.match_eval import to_markdown
+        print(to_markdown(asyncio.run(work.match_eval("--maybe-is-apply" in args))))
     elif cmd == "add-board" and len(args) >= 3:
         asyncio.run(add_board(args[0], args[1], args[2], args[3] if len(args) > 3 else None))
     else:

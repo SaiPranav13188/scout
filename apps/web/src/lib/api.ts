@@ -2,7 +2,8 @@
 
 import { devAuthToken, getSupabase } from "./supabase"
 import type {
-  AgentRun, CompanyRow, JobDetail, JobFilters, JobLabel, JobPage, JobStatus, LabelSummary, SavedSearch, Stats,
+  AgentRun, CompanyRow, Contact, FactCheck, JobDetail, JobFilters, JobLabel, JobPage, JobStatus, LabelSummary,
+  ResumeData, ResumeOverview, ResumeVersion, SavedSearch, Stats,
 } from "./types"
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -16,10 +17,11 @@ export class ApiError extends Error {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = devAuthToken() ?? (await getSupabase().auth.getSession()).data.session?.access_token
   if (!token) throw new ApiError(401, "Not signed in")
+  const isForm = init.body instanceof FormData  // the browser sets the multipart boundary itself
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(isForm ? {} : { "Content-Type": "application/json" }),
       Authorization: `Bearer ${token}`,
       ...init.headers,
     },
@@ -68,4 +70,16 @@ export const api = {
       method: "POST", body: JSON.stringify(b),
     }),
   agentRuns: () => request<AgentRun[]>("/api/agent-runs"),
+  resume: () => request<ResumeOverview>("/api/resume"),
+  resumeVersion: (v: number) => request<ResumeVersion>(`/api/resume/versions/${v}`),
+  checkResume: (data: ResumeData) =>
+    request<FactCheck>("/api/resume/check", { method: "POST", body: JSON.stringify({ data }) }),
+  saveResume: (base_version: number, data: ResumeData, contact: Contact) =>
+    request<ResumeOverview>("/api/resume", { method: "PUT", body: JSON.stringify({ base_version, data, contact }) }),
+  activateResume: (v: number) => request<ResumeOverview>(`/api/resume/versions/${v}/activate`, { method: "POST" }),
+  uploadResume: (file: File) => {
+    const body = new FormData()
+    body.append("file", file)
+    return request<ResumeOverview>("/api/resume/upload", { method: "POST", body })
+  },
 }

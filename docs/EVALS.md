@@ -75,7 +75,28 @@ Reviewing samples of the real run found these mistakes. Each now has a regressio
 - Caveat: every posting in this run came from a real company's own job board, so this measures false alarms,
   not detection on real scams. That needs the aggregator and email sources (Phase 2), where scams actually appear.
 
-## 5-9. Later phases
+## 5. Match score vs my labels (spec §13.1, Phase 3)
+
+**Method** (`scout_core/match_eval.py`, run with `uv run python -m scout_worker.cli match-eval`):
+my apply / maybe / no labels against each job's newest match score.
+
+- Precision, recall and false positives (jobs I labelled "no") when "score ≥ 55 / 70 / 85" is read as
+  "worth applying". `--maybe-is-apply` counts "maybe" as positive too.
+- Agreement between the score band (≥70 apply, 55-69 maybe, <55 no) and my label, with the confusion table.
+- Ranking (AUC): how often an "apply" job scores above a "no" job (50% = coin flip). Shown next to the
+  plain-code role-fit score as a baseline: the match score is only worth its LLM calls if it beats that.
+- The biggest disagreements, to read by hand.
+
+The maths is unit-tested on hand-worked sets. **Not measured yet: 0 labels so far** (target 30-50).
+
+## 6. Resume fact check (Phase 3; the Phase 4 validator builds on it)
+
+Every skill, tool, number and date in the parsed or hand-edited resume must appear in the uploaded file's
+text (contact details redacted). Real resume v1: 0 unsupported items.
+Error found and fixed: numbers matched as substrings, so an invented "3" passed because "8.3" was in the
+file, and "20" passed because of "2022". Numbers now match whole (tested).
+
+## 7-9. Later phases
 
 Resume factual accuracy, resume format, alert parsers, reliability under worker/Redis crashes, and
 prompt injection are measured in Phases 2-5. Phase 1 already tests: digests are never sent twice (including

@@ -20,6 +20,7 @@ export const keys = {
   runs: ["agent-runs"] as const,
   settings: ["settings"] as const,
   labels: ["label-summary"] as const,
+  resume: ["resume"] as const,
 }
 
 export function useJobs(filters: JobFilters) {

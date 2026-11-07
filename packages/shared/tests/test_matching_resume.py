@@ -61,3 +61,58 @@ def test_fact_check_catches_invented_skills_and_numbers():
     result = fact_check(padded, original)
     assert not result["ok"]
     assert any("Kubernetes" in u for u in result["unsupported"]) and any("75%" in u for u in result["unsupported"])
+
+
+def test_fact_check_numbers_are_whole_numbers():
+    original = "CGPA 8.3 (2022 - 2026). Cut latency 40%. Served 2,000 users."
+    def unsupported(bullet):
+        return fact_check(ResumeData(achievements=[bullet]), original)["unsupported"]
+    assert unsupported("Shipped 3 apps")  # the 3 in "8.3" doesn't count
+    assert unsupported("Grew to 20 users")  # nor the 20 in "2022"
+    assert unsupported("CGPA 8.30") and unsupported("Cut latency 4%")
+    assert not unsupported("CGPA 8.3, 2022-2026") and not unsupported("cut latency 40%")
+    assert not unsupported("2000 users") and not unsupported("2,000 users") and not unsupported("40 percent")
+
+
+def test_fact_check_covers_dates_headline_and_summary():
+    from scout_core.resume import Experience
+    data = ResumeData(headline="Engineer with 5 projects", summary="Since 2019",
+                      experience=[Experience(organization="X", role="Intern", start="Jan 2024", end="Mar 2024")],
+                      projects=[Project(name="Nagrik", dates="2023")])
+    flagged = " ".join(fact_check(data, "Intern at X, Jan 2024 - Mar 2025. Nagrik (2025)")["unsupported"])
+    assert "'5'" in flagged and "'2019'" in flagged and "'2023'" in flagged and "'2024'" not in flagged
+
+
+def test_clean_resume_tidies_hand_edits():
+    from scout_core.resume import Experience, clean_resume
+    messy = ResumeData(
+        headline="  ", summary=" AI   engineer ",
+        skills=[SkillGroup(category=" Languages ", items=["Python", " python", ""]),
+                SkillGroup(category="Tools", items=["PYTHON", "Docker"]), SkillGroup(category="Empty", items=[" "])],
+        projects=[Project(name=" ", bullets=["orphan"]), Project(name="Nagrik", tech=["Redis", "redis"], bullets=["a", " "])],
+        experience=[Experience(organization="", role="Intern")], certifications=["", "AWS CCP"])
+    clean = clean_resume(messy)
+    assert clean.headline is None and clean.summary == "AI engineer"
+    assert [(g.category, g.items) for g in clean.skills] == [("Languages", ["Python"]), ("Tools", ["Docker"])]
+    assert [(p.name, p.tech, p.bullets) for p in clean.projects] == [("Nagrik", ["Redis"], ["a"])]
+    assert clean.experience == [] and clean.certifications == ["AWS CCP"]
+
+
+def test_profile_fingerprint_changes_only_with_content():
+    from scout_core.resume import profile_fingerprint
+    assert profile_fingerprint("a", "v1") == profile_fingerprint("a", "v1")
+    assert profile_fingerprint("a", "v1") != profile_fingerprint("b", "v1") != profile_fingerprint("a", "v2")
+
+
+def test_pdf_errors_are_readable():
+    from scout_core.resume import ResumeFileError, extract_pdf_bytes
+    with pytest.raises(ResumeFileError, match="isn't a PDF"):
+        extract_pdf_bytes(b"PK\x03\x04 docx")
+    with pytest.raises(ResumeFileError, match="couldn't be read"):
+        extract_pdf_bytes(b"%PDF-1.4 garbage")
+
+
+def test_same_phone_in_two_formats_kept_once():
+    contact, redacted = split_contact("Name Here\n(+91) 98765 43210 | +91-9876543210\nCGPA 8.3")
+    assert contact.phones == ["(+91) 98765 43210"]
+    assert "98765" not in redacted and "(" not in redacted.splitlines()[1]

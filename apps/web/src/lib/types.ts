@@ -160,3 +160,85 @@ export interface JobFilters {
   include_unclear?: boolean
   sort?: "newest" | "relevance"
 }
+
+// ------------------------------------------------------------------ resume manager (routes/resume.py)
+
+export interface Education {
+  institution: string
+  degree: string | null
+  field: string | null
+  start: string | null
+  end: string | null
+  grade: string | null
+}
+
+export interface Project {
+  name: string
+  tech: string[]
+  dates: string | null
+  link_label: string | null
+  bullets: string[]
+}
+
+export interface Experience {
+  organization: string
+  role: string
+  start: string | null
+  end: string | null
+  location: string | null
+  bullets: string[]
+}
+
+export interface SkillGroup {
+  category: string
+  items: string[]
+}
+
+export interface ResumeData {
+  headline: string | null
+  summary: string | null
+  education: Education[]
+  skills: SkillGroup[]
+  projects: Project[]
+  experience: Experience[]
+  certifications: string[]
+  achievements: string[]
+}
+
+export interface Contact {
+  name: string | null
+  emails: string[]
+  phones: string[]
+  links: string[]
+}
+
+export interface FactCheck {
+  ok: boolean
+  unsupported: string[]
+  available?: boolean
+}
+
+export interface ResumeVersionSummary {
+  version: number
+  is_active: boolean
+  uploaded_at: string
+  source: string
+  reviewed: boolean
+  unsupported: number
+}
+
+export interface ResumeVersion extends ResumeVersionSummary {
+  data: ResumeData
+  contact: Contact
+  fact_check: FactCheck
+  parsed_with: string | null
+  edited_from: number | null
+  can_fact_check: boolean
+}
+
+export interface ResumeOverview {
+  active: ResumeVersion | null
+  versions: ResumeVersionSummary[]
+  scoring: { current: number; outdated: number; unscored: number }
+  saved?: boolean
+}
