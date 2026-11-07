@@ -420,3 +420,20 @@ async def test_evening_summary_names_due_follow_ups(session, db_url, monkeypatch
     await work.run_evening_summary("evening_summary:2026-11-07")
     text = __import__("json").loads(sent.calls[0].request.content)["text"]
     assert "Follow-ups due: 1" in text and "AI Engineer at Acme AI" in text and "applied 0 days ago" in text
+
+
+
+@pytest.mark.db
+@respx.mock
+async def test_job_found_overnight_is_sent_after_quiet_hours(session, db_url, monkeypatch):
+    from scout_core.db.models import Job
+    await _alert_env(session, db_url, monkeypatch)
+    await _seed_visible_job(session)
+    job = await session.scalar(select(Job))
+    job.first_seen_at = datetime.now(UTC) - __import__("datetime").timedelta(hours=9)  # found at night
+    await session.commit()
+    sent = respx.post(url__regex=r"https://api\.telegram\.org/.*").mock(
+        return_value=httpx.Response(200, json={"ok": True, "result": {}}))
+    await work.run_instant_alerts()
+    await session.refresh(job)
+    assert job.notified_at is not None and sent.call_count >= 2  # header + the job

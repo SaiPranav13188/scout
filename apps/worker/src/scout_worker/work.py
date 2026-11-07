@@ -283,15 +283,17 @@ async def alert_failure(worker: str, error: str) -> None:
 
 # ------------------------------------------------------------------ instant alerts
 
-INSTANT_LOOKBACK = timedelta(hours=2)
+# Long enough that jobs found overnight (quiet hours) or confirmed later (experience check) still reach
+# me; each job is sent once (notified_at), so a long window never repeats anything.
+INSTANT_LOOKBACK = timedelta(hours=24)
 
 
 async def run_instant_alerts(now: datetime | None = None) -> dict:
     """Telegram message for new relevant jobs not yet sent (grouped). Runs after every check.
 
     Jobs are marked notified *before* sending (so a retry never repeats them) and unmarked if the
-    send fails (so nothing is lost). During quiet hours nothing is sent; jobs found then reach me
-    in the morning digest.
+    send fails (so nothing is lost). During quiet hours nothing is sent; jobs found then are sent on the
+    first check after quiet hours end.
     """
     now = now or datetime.now(UTC)
     async with worker_session() as session:
