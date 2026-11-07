@@ -25,5 +25,5 @@ profile stays in this browser.
 
 ## Tests
 
-    node --test apps/extension/test/                          # field matching rules
+    node --test apps/extension/test/fields.test.js                       # field matching rules
     uv run --with playwright python apps/extension/test/browser_test.py   # real Chromium, test forms

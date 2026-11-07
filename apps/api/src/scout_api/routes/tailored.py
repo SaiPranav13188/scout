@@ -25,6 +25,9 @@ async def create_for_job(job_id: UUID, session: Annotated[AsyncSession, Depends(
     job = await session.get(Job, job_id)
     if job is None:
         raise HTTPException(404, "job not found")
+    from scout_core.resume_store import active_resume
+    if await active_resume(session) is None:  # the more useful message first
+        raise HTTPException(409, "Upload your resume first (Resume page).")
     try:
         llm = Gemini.from_settings()
         row = await generate(session, llm, job, actor="me")

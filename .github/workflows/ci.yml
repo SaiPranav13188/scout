@@ -44,4 +44,4 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
       - name: Autofill extension rules
-        run: node --test ../extension/test/
+        run: node --test ../extension/test/fields.test.js
