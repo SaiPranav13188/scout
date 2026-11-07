@@ -3,7 +3,15 @@
 Fills job application forms (Greenhouse, Lever, Ashby and most plain forms) with facts from your Scout
 profile, outlines every field it touched, and leaves the rest to you. **It never presses Submit.**
 
-## Install (2 minutes, once)
+## Quickest install (profile and resume already inside)
+
+    uv run python -m scout_worker.cli extension-build --last-name Bandaru
+
+builds a personal copy in `private/scout-autofill` (never committed) with your profile and resume PDF inside.
+In Chrome: `chrome://extensions` → **Developer mode** on → **Load unpacked** → choose `private/scout-autofill`.
+Nothing to import: it loads your details the first time you open it.
+
+## Install by hand (2 minutes, once)
 
 1. In Scout, open **Resume** and click **Autofill profile** (downloads `scout-autofill-profile.json`).
 2. In Chrome, open `chrome://extensions`, switch on **Developer mode** (top right), click **Load unpacked**

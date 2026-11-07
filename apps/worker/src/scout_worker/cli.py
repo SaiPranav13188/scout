@@ -12,6 +12,7 @@
   uv run python -m scout_worker.cli resume-parse private/resume.pdf
   uv run python -m scout_worker.cli score 10                 # score up to 10 feed jobs now
   uv run python -m scout_worker.cli resume-backfill private/resume.pdf [--apply]  # one-time upgrade
+  uv run python -m scout_worker.cli extension-build --last-name Bandaru   # personal extension copy in private/
   uv run python -m scout_worker.cli add-india-boards          # India hiring companies' public boards
   uv run python -m scout_worker.cli seniority-check 40       # Gemini reads "experience unclear" jobs
   uv run python -m scout_worker.cli recheck-feed [--apply]  # re-run the fresher filter on feed jobs
@@ -73,6 +74,39 @@ async def add_india_boards() -> None:
                 await s.commit()
                 added += 1
     print(f"added {added} boards, {skipped} already watched, {dead} not reachable")
+
+
+async def _active_resume_row():
+    from scout_core.resume_store import active_resume
+
+    async with worker_session() as s:
+        return await active_resume(s)
+
+
+def extension_build(out_dir: str, last_name: str | None, city: str | None, pdf: str | None) -> None:
+    """A personal copy of the Chrome extension with my profile and resume already inside (private/, never committed)."""
+    import shutil
+
+    from scout_core.autofill import build_profile
+
+    row = asyncio.run(_active_resume_row())
+    if row is None:
+        sys.exit("No resume in Scout yet.")
+    root = Path(__file__).resolve().parents[4]
+    out = Path(out_dir).resolve()
+    if out.exists():
+        shutil.rmtree(out)
+    shutil.copytree(root / "apps" / "extension", out, ignore=shutil.ignore_patterns("test", "README.md"))
+    (out / "preset").mkdir()
+    profile = build_profile(row, last_name=last_name, city=city)
+    resume = Path(pdf) if pdf else root / "private" / "resume.pdf"
+    if resume.exists():
+        shutil.copy2(resume, out / "preset" / "resume.pdf")
+        profile["resume_file_name"] = f"{(profile.get('full_name') or 'Resume').replace(' ', '_')}_Resume.pdf"
+    (out / "preset" / "profile.json").write_text(json.dumps(profile, indent=2))
+    print(f"Built {out}\n  profile: {profile['full_name']} · {profile['email']} · {profile['school']}"
+          f"\n  resume: {'attached' if resume.exists() else 'none'}"
+          "\nIn Chrome: chrome://extensions → Developer mode → Load unpacked → choose that folder.")
 
 
 async def gmail_connect(config: dict) -> None:
@@ -144,6 +178,9 @@ def main() -> None:
             sys.exit(f"No file at {Path(pdf).resolve()}.\nRun this from the scout folder (cd to it first), "
                      "or give the full path to your resume PDF.")
         print(json.dumps(asyncio.run(work.resume_backfill(pdf, apply="--apply" in args)), indent=2, default=str))
+    elif cmd == "extension-build":
+        opt = lambda flag: args[args.index(flag) + 1] if flag in args else None  # noqa: E731
+        extension_build(opt("--out") or "private/scout-autofill", opt("--last-name"), opt("--city"), opt("--pdf"))
     elif cmd == "add-india-boards":
         asyncio.run(add_india_boards())
     elif cmd == "seniority-check":

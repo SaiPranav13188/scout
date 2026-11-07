@@ -114,6 +114,11 @@ def format_job(item: DigestItem, now: datetime | None = None) -> tuple[str, list
     ], [
         {"text": "Skip", "callback_data": f"skip:{item.job_id}"},
         {"text": "Applied", "callback_data": f"applied:{item.job_id}"},
+    ], [
+        # One-tap labels for the matching eval (would I apply?).
+        {"text": "👍 I'd apply", "callback_data": f"label:apply:{item.job_id}"},
+        {"text": "🤔 Maybe", "callback_data": f"label:maybe:{item.job_id}"},
+        {"text": "👎 Not for me", "callback_data": f"label:no:{item.job_id}"},
     ]]
     return "\n".join(lines), buttons
 

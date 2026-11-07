@@ -65,7 +65,7 @@ document.getElementById("save").addEventListener("click", async () => {
   msg.textContent = "Saved."
 })
 
-chrome.storage.local.get(["profile", "resumeFile"]).then(({ profile, resumeFile: rf }) => {
+scoutLoadPreset().then(() => chrome.storage.local.get(["profile", "resumeFile"])).then(({ profile, resumeFile: rf }) => {
   render(profile)
   if (rf) document.getElementById("resumeName").textContent = `Saved: ${rf.name}`
 })

@@ -6,6 +6,7 @@ const status = document.getElementById("status")
 const BLOCKED = /(^|\.)linkedin\.com$|(^|\.)wellfound\.com$|(^|\.)angel\.co$/
 
 async function init() {
+  await scoutLoadPreset()
   const { profile, resumeFile } = await chrome.storage.local.get(["profile", "resumeFile"])
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   const host = tab && tab.url ? new URL(tab.url).hostname : ""

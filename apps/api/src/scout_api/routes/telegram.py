@@ -49,7 +49,11 @@ async def handle_update(session: AsyncSession, tg: TelegramClient, update: dict,
         chat_id = str(((cb.get("message") or {}).get("chat") or {}).get("id", ""))
         if chat_id != owner_chat:
             return  # not me: ignore silently
-        action, _, raw_id = (cb.get("data") or "").partition(":")
+        data = cb.get("data") or ""
+        if data.startswith("label:"):
+            await save_label(session, tg, cb["id"], data)
+            return
+        action, _, raw_id = data.partition(":")
         status = {"skip": ApplicationStatus.SKIPPED, "applied": ApplicationStatus.APPLIED}.get(action)
         try:
             job_id = uuid.UUID(raw_id)
@@ -119,3 +123,32 @@ async def send_resume(session: AsyncSession, tg: TelegramClient, callback_id: st
               else "↩️ untailored master resume (tailoring didn't pass the fact check)")
     caption = f"<b>{html.escape(job.title)}</b> · {html.escape(job.company_name)}\n{status} · {v.get('pages', '?')} page"
     await tg.send_document(chat, file_name(row, job, "pdf"), render_pdf((row.content or {}).get("document") or {}), caption)
+
+
+async def save_label(session: AsyncSession, tg: TelegramClient, callback_id: str, data: str) -> None:
+    """👍 / 🤔 / 👎 under a job: my apply / maybe / no label (same as the dashboard's "Your call")."""
+    from sqlalchemy import func, select
+
+    from scout_core.db.models import Job, JobLabel
+    from scout_core.runs import audit
+
+    _, label, raw_id = (data.split(":", 2) + ["", ""])[:3]
+    if label not in ("apply", "maybe", "no"):
+        return
+    try:
+        job_id = uuid.UUID(raw_id)
+    except ValueError:
+        return
+    if await session.get(Job, job_id) is None:
+        await tg.answer_callback(callback_id, "That job no longer exists.")
+        return
+    row = await session.scalar(select(JobLabel).where(JobLabel.job_id == job_id))
+    if row:
+        row.label = label
+    else:
+        session.add(JobLabel(job_id=job_id, label=label))
+    audit(session, actor="telegram", action="label_job", entity="job", entity_id=str(job_id), after={"label": label})
+    await session.commit()
+    total = await session.scalar(select(func.count()).select_from(JobLabel))
+    word = {"apply": "👍 I'd apply", "maybe": "🤔 Maybe", "no": "👎 Not for me"}[label]
+    await tg.answer_callback(callback_id, f"Saved: {word} · {total} of 40 labels")

@@ -703,3 +703,38 @@ async def test_score_bands_editable(client, session):
     assert (await client.put("/api/settings/matching", json=ok, headers=_auth())).status_code == 200
     assert (await client.get(f"/api/jobs/{job_id}", headers=_auth())).json()["match"]["band"] == "top"
     assert (await client.get("/api/jobs", headers=_auth())).json()["items"][0]["match"]["band"] in ("top", None)
+
+
+
+@respx.mock
+async def test_telegram_label_buttons(client, session):
+    from scout_core.db.models import JobLabel
+    await _seed(session)
+    answered = respx.post(url__regex=r".*/answerCallbackQuery").mock(return_value=httpx.Response(200, json={"ok": True, "result": True}))
+    job_id = (await session.scalar(select(Job).where(Job.title == "AI Engineer"))).id
+    ok = {"X-Telegram-Bot-Api-Secret-Token": "hook-secret"}
+    tap = lambda label, chat=42: {"callback_query": {"id": "c", "data": f"label:{label}:{job_id}", "message": {"chat": {"id": chat}}}}  # noqa: E731
+    await client.post("/telegram/webhook", json=tap("apply"), headers=ok)
+    assert (await session.scalar(select(JobLabel.label))) == "apply"
+    assert "1 of 40" in json.loads(answered.calls[0].request.content)["text"]
+    await client.post("/telegram/webhook", json=tap("no"), headers=ok)  # changing my mind updates, not duplicates
+    session.expire_all()
+    assert [r for r in (await session.scalars(select(JobLabel.label))).all()] == ["no"]
+    await client.post("/telegram/webhook", json=tap("maybe", chat=7), headers=ok)  # a stranger is ignored
+    session.expire_all()
+    assert (await session.scalar(select(JobLabel.label))) == "no"
+    await client.post("/telegram/webhook", json=tap("hire-me"), headers=ok)  # junk is ignored
+    assert (await client.get("/api/labels/summary", headers=_auth())).json()["no"] == 1
+
+
+def test_job_message_has_label_buttons():
+    from datetime import UTC, datetime
+
+    from scout_core.notify.telegram import DigestItem, format_job
+    item = DigestItem(job_id="00000000-0000-0000-0000-000000000001", title="AI Engineer", company="Acme", location="Bengaluru",
+                      salary_text=None, apply_url="https://jobs.lever.co/acme/1", posted_at=datetime.now(UTC),
+                      trust_level="verified", fresher_confidence="high", why="")
+    _, buttons = format_job(item)
+    datas = [b.get("callback_data", "") for row in buttons for b in row]
+    assert {"label:apply:00000000-0000-0000-0000-000000000001", "label:no:00000000-0000-0000-0000-000000000001"} <= set(datas)
+    assert all(len(d.encode()) <= 64 for d in datas)  # Telegram's limit for callback data
