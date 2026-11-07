@@ -13,6 +13,7 @@
   uv run python -m scout_worker.cli score 10                 # score up to 10 feed jobs now
   uv run python -m scout_worker.cli resume-backfill private/resume.pdf [--apply]  # one-time upgrade
   uv run python -m scout_worker.cli extension-build --last-name Bandaru   # personal extension copy in private/
+  uv run python -m scout_worker.cli setup-timer                # Supabase timer: run Scout every 10 min
   uv run python -m scout_worker.cli add-india-boards          # India hiring companies' public boards
   uv run python -m scout_worker.cli seniority-check 40       # Gemini reads "experience unclear" jobs
   uv run python -m scout_worker.cli recheck-feed [--apply]  # re-run the fresher filter on feed jobs
@@ -26,6 +27,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from scout_core.config import get_settings
 from scout_core.db.models import CompanyWatchlist
 from scout_core.db.session import worker_session
 from scout_core.http import PoliteClient
@@ -109,6 +111,41 @@ def extension_build(out_dir: str, last_name: str | None, city: str | None, pdf: 
           "\nIn Chrome: chrome://extensions → Developer mode → Load unpacked → choose that folder.")
 
 
+# The command the timer runs; format() quotes the URL and secret as SQL literals (%L).
+TIMER_SQL = ("select format('select net.http_post(url := %L, headers := jsonb_build_object(''X-Tick-Secret'', %L, "
+             "''Content-Type'', ''application/json''), body := cast(''{}'' as jsonb), timeout_milliseconds := 60000)', cast(:u as text), cast(:k as text))")
+
+
+async def setup_timer(api_url: str) -> None:
+    """Supabase pg_cron + pg_net: call the API's /internal/tick every 10 minutes (GitHub's schedule is too slow).
+
+    Safe to run again: it replaces the existing 'scout-tick' timer. `--remove` deletes it.
+    """
+    from sqlalchemy import text
+
+    secret = get_settings().tick_secret
+    if not secret:
+        sys.exit("TICK_SECRET is not set in .env")
+    async with worker_session() as s:
+        await s.execute(text("create extension if not exists pg_cron"))
+        await s.execute(text("create extension if not exists pg_net"))
+        command = (await s.execute(text(TIMER_SQL), {"u": api_url.rstrip("/") + "/internal/tick",
+                                                    "k": secret.get_secret_value()})).scalar()
+        await s.execute(text("select cron.schedule('scout-tick', '*/10 * * * *', :c)"), {"c": command})
+        await s.commit()
+        jobs = (await s.execute(text("select jobname, schedule, active from cron.job where jobname = 'scout-tick'"))).all()
+    print(f"Timer set: {jobs}. Scout now runs every 10 minutes via {api_url}.")
+
+
+async def remove_timer() -> None:
+    from sqlalchemy import text
+
+    async with worker_session() as s:
+        await s.execute(text("select cron.unschedule('scout-tick') where exists (select 1 from cron.job where jobname = 'scout-tick')"))
+        await s.commit()
+    print("Timer removed.")
+
+
 async def gmail_connect(config: dict) -> None:
     from scout_core.gmail import connect_interactive, save_connection
 
@@ -181,6 +218,11 @@ def main() -> None:
     elif cmd == "extension-build":
         opt = lambda flag: args[args.index(flag) + 1] if flag in args else None  # noqa: E731
         extension_build(opt("--out") or "private/scout-autofill", opt("--last-name"), opt("--city"), opt("--pdf"))
+    elif cmd == "setup-timer":
+        if "--remove" in args:
+            asyncio.run(remove_timer())
+        else:
+            asyncio.run(setup_timer(next((a for a in args if a.startswith("http")), "https://scout-api-bxpx.onrender.com")))
     elif cmd == "add-india-boards":
         asyncio.run(add_india_boards())
     elif cmd == "seniority-check":
