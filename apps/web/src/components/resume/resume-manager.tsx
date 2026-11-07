@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  CircleCheck, FileUp, History, Loader2, Plus, RotateCcw, ShieldCheck, Sparkles, TriangleAlert, Upload,
+  CircleCheck, Download, FileUp, History, Loader2, Plus, RotateCcw, ShieldCheck, Sparkles, TriangleAlert, Upload,
 } from "lucide-react"
 import { motion } from "motion/react"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -11,7 +11,7 @@ import { toast } from "sonner"
 import { PageContainer, PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { api, ApiError } from "@/lib/api"
+import { api, ApiError, downloadFile } from "@/lib/api"
 import { timeAgo } from "@/lib/format"
 import { keys } from "@/lib/queries"
 import type { Contact, FactCheck, ResumeData, ResumeOverview, ResumeVersion } from "@/lib/types"
@@ -111,6 +111,13 @@ export function ResumeManager() {
         <>
           <input ref={fileInput} type="file" accept="application/pdf,.pdf" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload.mutate(f) }} />
+          {active && (
+            <Button variant="ghost" title="Profile file for the Scout Autofill Chrome extension"
+              onClick={() => downloadFile("/api/resume/autofill-profile", "scout-autofill-profile.json")
+                .catch((e: Error) => toast.error("Download failed", { description: e.message }))}>
+              <Download /> Autofill profile
+            </Button>
+          )}
           <Button variant="outline" onClick={pickFile} disabled={busy}>
             {upload.isPending ? <Loader2 className="animate-spin" /> : <Upload />} Upload new PDF
           </Button>

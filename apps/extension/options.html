@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Scout Autofill: profile</title>
+  <style>
+    body { max-width: 640px; margin: 32px auto; padding: 0 16px; font: 14px/1.5 system-ui, sans-serif; color: #111827; }
+    h1 { font-size: 20px; } h2 { font-size: 15px; margin-top: 28px; }
+    label { display: grid; gap: 4px; margin: 10px 0; font-size: 13px; color: #374151; }
+    input { padding: 7px 9px; border: 1px solid #d1d5db; border-radius: 7px; font: inherit; }
+    button { padding: 8px 14px; border: 0; border-radius: 8px; background: #4f46e5; color: #fff; font-weight: 600; cursor: pointer; }
+    .muted { color: #6b7280; font-size: 13px; } #msg { min-height: 20px; color: #15803d; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+    @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Scout Autofill</h1>
+  <p class="muted">Your profile stays in this browser (chrome.storage.local). Nothing is sent anywhere.</p>
+
+  <h2>1. Import your profile</h2>
+  <p class="muted">In Scout, open <b>Resume</b> and click <b>Autofill profile</b>. Then choose that file here.</p>
+  <input id="import" type="file" accept="application/json,.json" aria-label="Profile file">
+
+  <h2>2. Check it</h2>
+  <form id="form" class="grid"></form>
+
+  <h2>3. Resume file to attach</h2>
+  <p class="muted">Attached to "Resume / CV" upload fields. Use your tailored PDF for a specific job, or your general one.</p>
+  <input id="resume" type="file" accept="application/pdf,.pdf" aria-label="Resume PDF">
+  <p id="resumeName" class="muted"></p>
+
+  <p><button id="save" type="button">Save</button></p>
+  <p id="msg" role="status"></p>
+
+  <p class="muted">Never stored or filled: work authorisation, visa, salary, notice period, gender and other personal
+    questions, declarations and consent boxes, cover letters and written answers. Those stay for you.</p>
+  <script src="options.js"></script>
+</body>
+</html>

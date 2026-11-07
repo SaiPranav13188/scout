@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Scout Autofill",
+  "version": "1.0.0",
+  "description": "Fills job application forms from your Scout profile for you to review. Never submits.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "action": { "default_popup": "popup.html", "default_title": "Scout Autofill" },
+  "options_page": "options.html"
+}

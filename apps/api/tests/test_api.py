@@ -621,3 +621,17 @@ async def test_health_summary(client, session):
     assert w["scoring"]["failures_24h"] == 1 and w["scoring"]["retries_24h"] == 2 and "429" in w["scoring"]["last_error"]
     assert datetime.fromisoformat(w["ingest"]["next_due_at"]) > now
     assert body["llm_24h"] == {"llm_calls": 4, "llm_input_tokens": 1000, "llm_output_tokens": 200}
+
+
+async def test_autofill_profile_export(client, session):
+    assert (await client.get("/api/resume/autofill-profile", headers=_auth())).status_code == 409
+    await _seed_resume(session, contact={"name": "B.Jane Example", "emails": ["jane@example.com"], "phones": ["+91 98765 43210"],
+                                         "links": ["https://github.com/jane/nagrik", "https://www.linkedin.com/in/jane",
+                                                   "https://github.com/jane", "https://jane.dev"]})
+    r = await client.get("/api/resume/autofill-profile", headers=_auth())
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    p = r.json()
+    assert (p["first_name"], p["last_name"], p["full_name"]) == ("Jane Example", "B", "B. Jane Example")
+    assert p["linkedin"] == "https://www.linkedin.com/in/jane" and p["github"] == "https://github.com/jane"
+    assert p["portfolio"] == "https://jane.dev" and p["graduation_year"] == "2026" and p["school"].startswith("Example")
+    assert not {"work_authorization", "salary", "gender", "notice_period"} & set(p)  # my call, never exported

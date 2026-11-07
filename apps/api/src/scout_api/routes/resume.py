@@ -180,3 +180,48 @@ async def upload_resume(session: Annotated[AsyncSession, Depends(db)], file: Ann
           after={"file": name, "unsupported": len(parsed["fact_check"]["unsupported"])})
     await session.commit()
     return await _overview(session)
+
+
+@router.get("/autofill-profile")
+async def autofill_profile(session: Annotated[AsyncSession, Depends(db)]):
+    """Profile for the Chrome autofill extension (Phase 4b), built from my active, reviewed resume.
+
+    Only plain facts a job form asks for. Questions that are my call (work authorisation, salary,
+    notice period, demographics, consent) are never part of it.
+    """
+    from fastapi.responses import JSONResponse
+
+    from scout_core.render_resume import header_links
+
+    row = await active_resume(session)
+    if row is None:
+        raise HTTPException(409, "No resume yet. Upload one first.")
+    p = row.parsed or {}
+    data, contact = resume_data(p), Contact.model_validate(p.get("contact") or {})
+    name = (contact.name or "").replace(".", ". ").split()
+    # "B. Sai Pranav": a leading initial is usually the family name in India; put it last (editable).
+    initials = [w for w in name if len(w.rstrip(".")) == 1]
+    given = [w for w in name if len(w.rstrip(".")) > 1]
+    links = contact.links
+    pick = lambda pred: next((u for u in links if pred(u.lower())), None)  # noqa: E731
+    edu = data.education[0] if data.education else None
+    year = None
+    if edu and edu.end:
+        import re
+        m = re.search(r"(19|20)\d{2}", edu.end)
+        year = m.group(0) if m else None
+    profile = {
+        "version": 1, "resume_version": row.version, "reviewed": bool(p.get("reviewed")),
+        "first_name": (" ".join(given[:-1]) if not initials and len(given) > 1 else " ".join(given)) or None,
+        "last_name": (" ".join(w.rstrip(".") for w in initials) if initials else (given[-1] if len(given) > 1 else None)),
+        "full_name": " ".join(name) or None, "email": contact.emails[0] if contact.emails else None,
+        "phone": contact.phones[0] if contact.phones else None,
+        "linkedin": pick(lambda u: "linkedin.com" in u),
+        "github": next((("https://" + u) for u in header_links(links, 5) if u.startswith("github.com")), None),
+        "portfolio": pick(lambda u: "linkedin.com" not in u and "github.com" not in u),
+        "location": None,
+        "school": edu.institution if edu else None, "degree": edu.degree if edu else None,
+        "discipline": edu.field if edu else None, "graduation_year": year, "gpa": edu.grade if edu else None,
+        "years_experience": "0",
+    }
+    return JSONResponse(profile, headers={"Content-Disposition": 'attachment; filename="scout-autofill-profile.json"'})

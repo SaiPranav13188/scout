@@ -172,7 +172,16 @@ Seven such searches are now on the Saved searches page (LinkedIn and Naukri, Ind
 | Eval on real data (`cli tailor-eval`) | 6 real AI jobs: 6 tailored first try, 0 unsupported claims, 6/6 one page, 6/6 text extraction OK |
 
 ## Phase 4: Tailoring + validation (spec heading kept for reference)
-## Phase 4b: Autofill Chrome extension (added by you on 2026-11-06; not started)
+## Phase 4b: Autofill Chrome extension (done 2026-11-07)
+
+`apps/extension` (Manifest V3; install steps in its README). Fills plain facts from a profile exported from my
+reviewed resume (Resume page → "Autofill profile"), attaches the chosen resume PDF, outlines every filled field
+green and every "your call" question amber (work authorisation, visa, salary, notice period, demographics,
+declarations, consent, cover letters, written answers: never filled). Never overwrites, never clicks or submits,
+stops on CAPTCHA / login / OTP, never runs on LinkedIn or Wellfound, runs only when I click (activeTab, no host
+permissions), profile stays in the browser, Undo restores the form.
+Tests: 7 rule tests (`node --test`, in CI) and 20 real-Chromium checks on Greenhouse-style, CAPTCHA, login and
+LinkedIn test pages (`apps/extension/test/browser_test.py`): all pass; the unpacked extension loads in Chromium.
 ## Phase 5: Tracker, follow-ups, health, polish (2026-11-07)
 
 | Item | Status |

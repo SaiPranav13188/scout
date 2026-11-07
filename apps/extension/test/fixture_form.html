@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Apply: AI Engineer (test form)</title></head>
+<body>
+<form id="application" onsubmit="window.__submitted = true; return false">
+  <div class="field"><label for="first_name">First Name *</label><input id="first_name" name="first_name" type="text"></div>
+  <div class="field"><label for="last_name">Last Name *</label><input id="last_name" name="last_name" type="text"></div>
+  <div class="field"><label for="email">Email *</label><input id="email" name="email" type="email"></div>
+  <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" type="tel" value="already typed"></div>
+  <div class="field"><label for="resume">Resume/CV *</label><input id="resume" name="resume" type="file"></div>
+  <div class="field"><label for="cover">Cover Letter</label><input id="cover" name="cover" type="file"></div>
+  <div class="field"><label>LinkedIn Profile<input name="urls[LinkedIn]" type="text"></label></div>
+  <div class="application-question"><div class="application-label">Website</div><input name="urls[Portfolio]" type="text"></div>
+  <div class="field"><label for="school">School</label>
+    <select id="school"><option value="">Select…</option><option value="77">Bennett University</option><option value="78">Other</option></select></div>
+  <div class="field"><label for="degree">Degree</label>
+    <select id="degree"><option value="">Select…</option><option value="ba">Bachelor of Arts</option><option value="mba">MBA</option></select></div>
+  <div class="field"><label for="grad">Graduation year</label><input id="grad" type="text"></div>
+  <div class="field"><label for="auth">Are you legally authorized to work in India?</label>
+    <select id="auth"><option value="">Select…</option><option>Yes</option><option>No</option></select></div>
+  <div class="field"><label for="ctc">Expected CTC</label><input id="ctc" type="text"></div>
+  <div class="field"><label for="why">Why do you want to join us?</label><textarea id="why"></textarea></div>
+  <div class="field"><label><input id="consent" type="checkbox"> I agree to the privacy policy</label></div>
+  <!-- React-style controlled input: only the native value setter + input event updates its state -->
+  <div class="field"><label for="city">Current City</label><input id="city" type="text"></div>
+  <button id="submit" type="submit">Submit application</button>
+</form>
+<script>
+  window.__cityState = ""
+  const city = document.getElementById("city")
+  city.addEventListener("input", (e) => { window.__cityState = e.target.value })
+</script>
+</body></html>

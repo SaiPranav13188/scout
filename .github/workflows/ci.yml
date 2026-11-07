@@ -43,3 +43,5 @@ jobs:
       - run: npx next typegen
       - run: npx tsc --noEmit
       - run: npm run build
+      - name: Autofill extension rules
+        run: node --test ../extension/test/
