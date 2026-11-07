@@ -57,10 +57,11 @@ _FRESHER_SIGNAL = re.compile(
 
 
 def supports_fresher(quote: str) -> bool:
-    """A "fresher_ok" quote must itself say so, and must not ask for experience."""
+    """A "fresher_ok" quote must itself say so, must not ask for experience, and must not be an instruction."""
     from scout_core.filters.fresher import Decision, classify
+    from scout_core.llm import suspected_injection
 
-    if not _FRESHER_SIGNAL.search(quote):
+    if suspected_injection(quote) or not _FRESHER_SIGNAL.search(quote):
         return False
     return classify("role", quote).decision != Decision.DROP and not re.search(
         r"\b([2-9]|1\d)\s*\+?\s*(years?|yrs)", quote, re.IGNORECASE)
@@ -68,6 +69,11 @@ def supports_fresher(quote: str) -> bool:
 
 async def read_seniority(llm: Gemini, *, title: str, description: str) -> tuple[str, str]:
     """Returns (verdict, reason line). The verdict is "unclear" unless the quote checks out."""
+    from scout_core.llm import suspected_injection
+
+    if hit := suspected_injection(f"{title}\n{description}"):
+        # A posting that tries to instruct the model is never settled by the model: stays hidden.
+        return "unclear", f"{MARK} posting contains instruction-like text ('{hit[:40]}'), left hidden"
     r = await llm.json(SeniorityRead, PROMPT.format(job=untrusted("job_posting", f"Title: {title}\n\n{description}")),
                        purpose="seniority", temperature=0.0)
     if r.verdict == "unclear":

@@ -29,9 +29,17 @@ SYSTEM_GUARD = (
 
 # Phrases that suggest a job post is trying to steer the model (logged, not obeyed).
 _INJECTION = re.compile(
-    r"(ignore (all |any )?(previous|prior|above) (instructions|rules)|disregard (the )?(system|previous)|"
-    r"you are now|act as (an?|the) |system prompt|reveal your (prompt|instructions)|"
-    r"give (this|me) (a )?(score|rating) of 100|rate (this|me) (as )?100)",
+    r"(ignore (all |any )?(previous|prior|above|earlier) (instructions|rules|prompts?)|disregard (the |all |any )?"
+    r"(system|previous|prior|above) (prompt|instructions|rules)|you are now (a|an|the|in)\b|"
+    r"(reveal|print|show|repeat) (your|the) system prompt|"
+    r"give (this|me) (a )?(score|rating) of 100|rate (this|me|the candidate) (as )?100|"
+    # Instructions aimed at AI screeners, and the answer words of Scout's own schemas (2026-11-07).
+    r"note (to|for) (the |any )?(ai|llms?|gpt|chatgpt|gemini|claude|language models?|automated|screening)\b|"
+    r"\b(ai|llms?|gpts?|chatgpt|gemini|claude|language models?|assistants?|screening (tool|bot|system|software)s?|"
+    r"automated (systems?|tools?|reviewers?|screeners?))\s*[:,]?\s*(you )?(must|should|shall|need to|are to|always) "
+    r"(answer|respond|reply|output|return|rate|score|rank|classify|mark|label|say|give|ignore|treat)\b|"
+    r"(give|assign|award)[^.\n]{0,30}\b(highest|maximum|perfect|top) (possible )?(score|rating)|"
+    r"fresher_ok|needs_experience)",
     re.IGNORECASE,
 )
 
