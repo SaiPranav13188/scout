@@ -12,7 +12,7 @@ import type { Job } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 import { CompanyMark, FitMeter, FresherBadge, TrustBadge } from "./badges"
-import { TailoredPanel } from "@/components/resume/tailored-panel"
+import { DraftsPanel, TailoredPanel } from "@/components/resume/tailored-panel"
 
 import { LabelButtons } from "./label-buttons"
 import { BreakdownBar, MatchRing } from "./match-ring"
@@ -131,6 +131,10 @@ export function JobSheet({ jobId, preview, onClose, onOpened, onSkip, onApplied 
 
               <Section title="Tailored resume" icon={FileText} delay={0.025}>
                 <TailoredPanel jobId={job.id} />
+              </Section>
+
+              <Section title="Message drafts" icon={FileText} delay={0.028}>
+                <DraftsPanel jobId={job.id} />
               </Section>
 
               <Section title="Your call" icon={CircleCheck} delay={0.03}>

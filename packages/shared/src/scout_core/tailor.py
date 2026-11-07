@@ -111,6 +111,20 @@ def _bullets_of(master: ResumeData, kind: str, name: str, role: str | None = Non
     return None if item is None else item.bullets
 
 
+def text_problems(where: str, text: str, master: ResumeData, source_text: str | None,
+                  job_terms: list[str] | None = None) -> list[str]:
+    """Tools, skills and numbers in free text that my master data doesn't support."""
+    truth = master_text(master, source_text)
+    known_numbers = _numbers(" ".join([source_text or "", master.model_dump_json()]))
+    vocab = TECH_TERMS | {_norm(t) for t in (job_terms or []) if 2 <= len(_norm(t)) <= 30}
+    t = _norm(text)
+    out = [f"{where}: '{term}' is not in the master resume" for term in sorted(vocab)
+           if term and _has_term(t, term) and not _has_term(truth, term)]
+    out += [f"{where}: number '{num}' is not in the master resume"
+            for num in re.findall(r"(?<![\d.,])\d+(?:[.,]\d+)*%?", text) if num.replace(",", "") not in known_numbers]
+    return out
+
+
 def validate(content: dict[str, Any], master: ResumeData, source_text: str | None,
              job_terms: list[str] | None = None) -> dict[str, Any]:
     """Plain-code integrity check of a tailored resume. Any unsupported claim fails it."""

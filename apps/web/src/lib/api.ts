@@ -105,6 +105,8 @@ export const api = {
   updateApplication: (jobId: string, b: { status?: string; notes?: string; follow_up_at?: string; clear_follow_up?: boolean }) =>
     request<ApplicationRow>(`/api/applications/${jobId}`, { method: "PATCH", body: JSON.stringify(b) }),
   healthSummary: () => request<HealthSummary>("/api/health/summary"),
+  drafts: (jobId: string) => request<{ ok: boolean; cover_note?: string; recruiter_message?: string; unsupported?: string[] }>(
+    `/api/jobs/${jobId}/drafts`, { method: "POST" }),
   tailoredAll: () => request<TailoredResume[]>("/api/resumes"),
   uploadResume: (file: File) => {
     const body = new FormData()

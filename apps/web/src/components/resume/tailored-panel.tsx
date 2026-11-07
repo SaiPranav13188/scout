@@ -1,7 +1,7 @@
 "use client"
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Download, FileText, Loader2, RefreshCw, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react"
+import { Copy, Download, FileText, Loader2, MessageSquareText, RefreshCw, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -83,6 +83,45 @@ export function TailoredPanel({ jobId }: { jobId: string }) {
           <Button size="sm" className={cn("bg-brand text-brand-foreground hover:bg-brand/90")} onClick={() => make.mutate()}>
             <FileText /> Make tailored resume
           </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+/** Job sheet: cover note + recruiter message, fact-checked like the resume. Drafts only. */
+export function DraftsPanel({ jobId }: { jobId: string }) {
+  const make = useMutation({
+    mutationFn: () => api.drafts(jobId),
+    onError: (e: Error) => toast.error("Couldn't draft", { description: e instanceof ApiError ? e.message : "Server not reachable." }),
+  })
+  const d = make.data
+  const copy = (text: string) => navigator.clipboard.writeText(text).then(() => toast.success("Copied"))
+  return (
+    <div className="space-y-3 rounded-xl border bg-card/50 p-4">
+      {make.isPending ? (
+        <p className="flex items-center gap-2 text-sm"><Loader2 className="size-4 animate-spin text-brand" /> Drafting and fact-checking…</p>
+      ) : d?.ok ? (
+        <>
+          {([["Cover note", d.cover_note], ["Message to a recruiter", d.recruiter_message]] as const).map(([label, text]) => (
+            <div key={label} className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                <Button size="xs" variant="ghost" onClick={() => copy(text ?? "")}><Copy /> Copy</Button>
+              </div>
+              <p className="rounded-lg bg-background/60 p-3 text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
+            </div>
+          ))}
+          <p className="flex items-center gap-1.5 text-xs text-success"><ShieldCheck className="size-3.5" /> Only facts from your resume. Edit before you send; Scout never sends anything.</p>
+          <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => make.mutate()}><RefreshCw /> Draft again</Button>
+        </>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {d && !d.ok ? "Gemini's drafts made claims your resume doesn't support, so they're not shown. Try again." : "A short cover note and a message for a recruiter, from your resume's facts only."}
+          </p>
+          <Button size="sm" variant="outline" onClick={() => make.mutate()}><MessageSquareText /> Draft messages</Button>
         </div>
       )}
     </div>

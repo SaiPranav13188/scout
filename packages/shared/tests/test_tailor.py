@@ -120,3 +120,20 @@ def test_unusual_characters_do_not_break_rendering():
     doc["projects"][0]["bullets"] = ["Routed → fallback ✓ in हिन्दी … ≥ 2 retries"]
     _, pdf, _ = fit_one_page(doc)
     assert page_count(pdf) == 1
+
+
+async def test_message_drafts_are_fact_checked():
+    from scout_core.drafts import Drafts, draft_messages
+    honest = Drafts(cover_note="I built Nagrik, a 6-agent pipeline with Playwright, and a 40-case eval.",
+                    recruiter_message="Hi, I built a multilingual RAG assistant with Qdrant and would love to talk.")
+    padded = Drafts(cover_note="I have 3 years of Kubernetes experience.", recruiter_message="Hi, I led a team of 12.")
+    llm = _FakeLLM([honest])
+    r = await draft_messages(llm, master=MASTER, source_text=SOURCE, title="AI Engineer", company="Acme",
+                             description="LLM agents", job_terms=["Kubernetes"])
+    assert r["ok"] and r["attempts"] == 1 and "Nagrik" in r["cover_note"]
+    llm = _FakeLLM([padded, padded])
+    r = await draft_messages(llm, master=MASTER, source_text=SOURCE, title="AI Engineer", company="Acme",
+                             description=None, job_terms=["Kubernetes"])
+    assert not r["ok"] and "cover_note" not in r  # never shown when it makes things up
+    assert any("kubernetes" in u for u in r["unsupported"]) and any("'12'" in u for u in r["unsupported"])
+    assert "rejected" in llm.prompts[1]

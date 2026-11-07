@@ -171,6 +171,11 @@ Seven such searches are now on the Saved searches page (LinkedIn and Naukri, Ind
 | Telegram "Resume" button sends the PDF (made on the spot if needed) | done, tested |
 | Eval on real data (`cli tailor-eval`) | 6 real AI jobs: 6 tailored first try, 0 unsupported claims, 6/6 one page, 6/6 text extraction OK |
 
+**Message drafts (spec §6.4 draft_messages):** a cover note (≤120 words) and a recruiter message (≤60 words) per
+job, on request from the job panel, with the same fact check as tailored resumes (a draft with a tool, number or
+claim not in my resume is retried once, then not shown). Drafts only; logged in the audit log; I send them myself.
+Real run: Observe.AI "AI Agent Engineer", passed on the first try.
+
 ## Phase 4: Tailoring + validation (spec heading kept for reference)
 ## Phase 4b: Autofill Chrome extension (done 2026-11-07)
 

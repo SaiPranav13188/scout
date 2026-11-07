@@ -64,3 +64,30 @@ async def download(resume_id: UUID, session: Annotated[AsyncSession, Depends(db)
     return Response(data, media_type=MEDIA[format], headers={
         "Content-Disposition": f'attachment; filename="{file_name(row, job, format)}"',
         "Cache-Control": "no-store"})
+
+
+@router.post("/jobs/{job_id}/drafts")
+async def drafts_for_job(job_id: UUID, session: Annotated[AsyncSession, Depends(db)]):
+    """Cover note + recruiter message for this job. Drafts only; I send them myself."""
+    from scout_core.drafts import draft_messages
+    from scout_core.resume_store import active_resume, resume_data
+    from scout_core.runs import audit
+
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+    master_row = await active_resume(session)
+    if master_row is None:
+        raise HTTPException(409, "Upload your resume first (Resume page).")
+    parsed = master_row.parsed or {}
+    try:
+        result = await draft_messages(Gemini.from_settings(), master=resume_data(parsed), source_text=parsed.get("source_text"),
+                                      title=job.title, company=job.company_name, description=job.description,
+                                      job_terms=[*(job.required_skills or []), *(job.preferred_skills or [])])
+    except LLMNotConfigured as exc:
+        raise HTTPException(503, "Gemini isn't configured on the server (GEMINI_API_KEY).") from exc
+    except LLMError as exc:
+        raise HTTPException(502, f"Gemini didn't answer: {str(exc)[:160]}. Try again in a minute.") from exc
+    audit(session, actor="me", action="draft_messages", entity="job", entity_id=str(job_id), after=result)
+    await session.commit()
+    return result
