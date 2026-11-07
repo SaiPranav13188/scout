@@ -45,14 +45,14 @@ function RunRow({ run }: { run: AgentRun }) {
   const counts = Object.entries(run.counts ?? {}).filter(([, v]) => v)
   return (
     <motion.div layout variants={fadeUp} className="rounded-xl border bg-card/50">
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full min-w-0 items-center gap-2 px-3 py-3 text-left text-sm sm:gap-3 sm:px-4">
         <PulseDot tone={st.dot} className={run.status === "running" ? "" : "[&>span:first-child]:hidden"} />
-        <span className="w-40 shrink-0 font-medium">{WORKERS[run.worker] ?? run.worker}</span>
+        <span className="min-w-0 flex-1 truncate font-medium sm:w-40 sm:flex-none">{WORKERS[run.worker] ?? run.worker}</span>
         <span className={cn("w-16 shrink-0 text-xs", st.text)}>{st.label}</span>
         <span className="hidden flex-1 truncate text-xs text-muted-foreground sm:block">
           {counts.slice(0, 4).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(" · ")}
         </span>
-        <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">{timeAgo(run.started_at)} · {duration(run)}</span>
+        <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">{timeAgo(run.started_at)}<span className="hidden sm:inline"> · {duration(run)}</span></span>
         <motion.span animate={{ rotate: open ? 180 : 0 }}><ChevronDown className="size-4 text-muted-foreground" /></motion.span>
       </button>
       <AnimatePresence initial={false}>
