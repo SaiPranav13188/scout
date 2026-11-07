@@ -14,7 +14,11 @@ SRC = HERE.parent / "src"
 PROFILE = {"version": 1, "first_name": "Jane", "last_name": "Example", "full_name": "Jane Example", "email": "jane@example.com",
            "phone": "+91 98765 43210", "linkedin": "https://linkedin.com/in/jane", "github": "https://github.com/jane",
            "portfolio": "https://jane.dev", "location": "Bengaluru", "school": "Bennett University", "degree": "B.Tech",
-           "discipline": "CSE", "graduation_year": "2026", "gpa": "8.3", "years_experience": "0"}
+           "discipline": "CSE", "graduation_year": "2026", "gpa": "8.3", "years_experience": "0",
+           "answers": {"relocate_cities": ["Bengaluru", "Hyderabad", "Chennai"], "notice_period": "Immediate",
+                       "current_ctc": "0 (Fresher)", "expected_ctc": "5-6 LPA (negotiable)", "work_auth_india": "Yes",
+                       "sponsorship_india": "No", "backlogs": "No", "dob": "2005-07-08", "gender": "Male",
+                       "heard_from": "LinkedIn", "twelfth": {"board": "Intermediate", "score": "96.8%", "year": None}}}
 PDF = {"name": "Jane_Resume.pdf", "base64": base64.b64encode(b"%PDF-1.4 test").decode()}
 STORED = json.dumps({"profile": PROFILE, "resumeFile": PDF})
 STUB = ("window.__results = [];\n"
@@ -51,15 +55,34 @@ def main():
         check(v("#school") == "77", "school chosen in select")
         check(v("#degree") == "", "degree left empty when no option really matches (B.Tech is not 'Bachelor of Arts')")
         check(v("#grad") == "2026", "graduation year")
-        check(v("#auth") == "" and v("#ctc") == "" and v("#why") == "", "work authorisation, salary, written answer untouched")
+        check(v("#auth") == "Yes" and v("#ctc") == "5-6 LPA (negotiable)", "India work authorisation and expected CTC from saved answers")
+        check(v("#why") == "", "written answer ('Why do you want to join us?') left for me")
         check(page.eval_on_selector("#consent", "e => e.checked") is False, "consent box untouched")
         check(page.evaluate("window.__cityState") == "Bengaluru", "React-style controlled input received the value")
         check(page.evaluate("!window.__submitted"), "form NOT submitted")
-        check("dashed" in page.eval_on_selector("#ctc", "e => e.style.outline"), "my-call fields outlined amber")
+        check("dashed" in page.eval_on_selector("#why", "e => e.style.outline"), "my-call fields outlined amber")
         check("solid" in page.eval_on_selector("#email", "e => e.style.outline"), "filled fields outlined green")
         check(page.is_visible("#scout-autofill-panel"), "review panel shown")
         page.click("#scout-autofill-panel button:has-text('Undo fill')")
         check(v("#first_name") == "" and page.eval_on_selector("#resume", "e => e.files.length") == 0, "undo restores the form")
+
+        pa = b.new_page()
+        res = run(pa, "https://jobs.lever.co/acme/9/apply", html=(HERE / "fixture_answers.html").read_text())
+        va = lambda sel: pa.eval_on_selector(sel, "e => e.value")  # noqa: E731
+        checked = lambda name: pa.evaluate(f"(document.querySelector('input[name={name}]:checked') || {{}}).value || null")  # noqa: E731
+        check(res.get("answered", 0) >= 8, f"saved answers used ({res})")
+        check(va("#city") == "Bengaluru" or va("#city") == "Hyderabad", f"current city = job's city ({va('#city')})")
+        check(va("#city") == "Hyderabad", "city taken from this job's location (Hyderabad)")
+        check(va("#notice") == "Immediate" and va("#cctc") == "0 (Fresher)" and va("#ectc") == "5-6 LPA (negotiable)", "notice and CTC")
+        check(va("#dob") == "2005-07-08" and va("#twelfth") == "96.8%", "date of birth and 12th marks")
+        check(pa.eval_on_selector("#hear", "e => e.options[e.selectedIndex].text") == "LinkedIn", "how you heard: LinkedIn")
+        check(checked("auth_in") == "y", "authorized to work in India: Yes")
+        check(checked("auth_us") is None, "US work authorisation left for me")
+        check(checked("gender") == "m", "gender: Male (not Female)")
+        check(checked("bl") == "no", "backlogs: No (not 'None of these')")
+        check(checked("rel") == "y", "relocate: Yes (job is in Hyderabad)")
+        check(pa.eval_on_selector("#certify", "e => e.checked") is False and pa.evaluate("!window.__submitted"), "declaration untouched, not submitted")
+        check("solid" in pa.eval_on_selector("#notice", "e => e.style.outline") and "37, 99, 235" in pa.eval_on_selector("#notice", "e => getComputedStyle(e).outlineColor"), "saved answers outlined blue")
 
         page2 = b.new_page()
         res = run(page2, "https://jobs.lever.co/acme/2/apply", html="<form><label for=e>Email</label><input id=e type=email>"

@@ -105,9 +105,18 @@ def extension_build(out_dir: str, last_name: str | None, city: str | None, pdf: 
     if resume.exists():
         shutil.copy2(resume, out / "preset" / "resume.pdf")
         profile["resume_file_name"] = f"{(profile.get('full_name') or 'Resume').replace(' ', '_')}_Resume.pdf"
+    answers_file = root / "private" / "autofill_answers.json"
+    if answers_file.exists():
+        profile["answers"] = json.loads(answers_file.read_text())
+        if profile.get("gpa") and profile["answers"].get("btech_cgpa"):
+            profile["gpa"] = profile["answers"]["btech_cgpa"]
+    from datetime import UTC
+    from datetime import datetime as _dt
+    profile["built_at"] = _dt.now(UTC).isoformat(timespec="seconds")
     (out / "preset" / "profile.json").write_text(json.dumps(profile, indent=2))
     print(f"Built {out}\n  profile: {profile['full_name']} · {profile['email']} · {profile['school']}"
           f"\n  resume: {'attached' if resume.exists() else 'none'}"
+          f"\n  saved answers: {len(profile.get('answers') or {})}"
           "\nIn Chrome: chrome://extensions → Developer mode → Load unpacked → choose that folder.")
 
 

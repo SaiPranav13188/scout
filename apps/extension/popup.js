@@ -37,7 +37,7 @@ async function init() {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type !== "scout-autofill-result") return
   const r = msg.result
-  if (r.status === "filled") status.textContent = `Filled ${r.filled} field(s). ${r.yours} need you. Review, then submit yourself.`
+  if (r.status === "filled") status.textContent = `Filled ${r.filled} field(s), answered ${r.answered || 0} from your saved answers. ${r.yours} need you. Review, then submit yourself.`
   else { status.className = "warn"; status.textContent = r.message }
 })
 

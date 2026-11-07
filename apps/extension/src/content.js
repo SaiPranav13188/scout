@@ -15,6 +15,7 @@
   const PANEL_ID = "scout-autofill-panel"
   const GREEN = "2px solid #16a34a"
   const AMBER = "2px dashed #d97706"
+  const BLUE = "2px solid #2563eb"  // filled from my saved answers
 
   function report(result) {
     try { chrome.runtime.sendMessage({ type: "scout-autofill-result", result }) } catch (_) { /* popup closed */ }
@@ -77,20 +78,72 @@
     el.dispatchEvent(new Event("change", { bubbles: true }))
   }
 
-  const filled = [], yours = [], undo = []
+  const answers = profile.answers || null
+  const pageText = [document.title,
+    ...[...document.querySelectorAll("[class*='location' i], [data-qa*='location' i], .posting-categories, header, h1, h2")]
+      .slice(0, 30).map((n) => n.innerText),
+    (document.body.innerText || "").slice(0, 6000)].join(" \n ")
+  const city = answers ? F.jobCity(pageText, answers.relocate_cities) : null
+  const filled = [], answered = [], yours = [], undo = []
+
+  function setChecked(el, on) {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked").set.call(el, on)
+    el.dispatchEvent(new Event("input", { bubbles: true }))
+    el.dispatchEvent(new Event("change", { bubbles: true }))
+  }
+
+  function groupQuestion(radio) {
+    const fs = radio.closest("fieldset")
+    const legend = fs && fs.querySelector("legend")
+    if (legend) return legend.innerText
+    const box = radio.closest(".field, .application-question, .application-field, [class*='question'], [role='radiogroup'], li")
+    const q = box && box.querySelector("label:not(:has(input)), legend, .application-label, [class*='label'], [class*='Label']")
+    return q ? q.innerText : radio.getAttribute("aria-label") || radio.name || ""
+  }
   const fields = [...document.querySelectorAll("input, select, textarea")].filter((el) => {
     if (el.disabled || el.readOnly) return false
     const r = el.getBoundingClientRect()
     return el.type === "file" || (r.width > 0 && r.height > 0)
   })
 
+  const radioGroups = new Map()
   for (const el of fields) {
+    if (el.type === "radio") {
+      const key = el.name || groupQuestion(el)
+      if (!radioGroups.has(key)) radioGroups.set(key, [])
+      radioGroups.get(key).push(el)
+      continue
+    }
     const label = labelFor(el)
     const verdict = F.classify({
       label, name: el.name, id: el.id, placeholder: el.placeholder, autocomplete: el.autocomplete,
       type: el.tagName === "SELECT" ? "select" : el.tagName === "TEXTAREA" ? "textarea" : el.type, tag: el.tagName,
     })
     const short = (label || el.name || el.id || "field").replace(/\s+/g, " ").trim().slice(0, 60)
+    if (verdict.kind === "yours" && verdict.answer && !(el.value && el.value.trim())) {
+      const inputType = el.tagName === "SELECT" ? "select" : el.tagName === "TEXTAREA" ? "textarea" : el.type
+      const value = F.resolveAnswer(verdict.answer, answers, { question: label, inputType, city })
+      if (value) {
+        if (el.tagName === "SELECT") {
+          const idx = F.matchChoice([...el.options].map((o) => o.text), value)
+          if (idx >= 0) {
+            undo.push({ el, value: el.value })
+            setValue(el, el.options[idx].value)
+            el.style.outline = BLUE
+            el.dataset.scout = "filled"
+            answered.push(`${short}: ${el.options[idx].text.slice(0, 40)}`)
+            continue
+          }
+        } else if (el.type !== "checkbox") {
+          undo.push({ el, value: el.value })
+          setValue(el, value)
+          el.style.outline = BLUE
+          el.dataset.scout = "filled"
+          answered.push(`${short}: ${value.slice(0, 40)}`)
+          continue
+        }
+      }
+    }
     if (verdict.kind === "yours") {
       el.style.outline = AMBER
       el.dataset.scout = "yours"
@@ -108,7 +161,9 @@
       }
       continue
     }
-    const value = profile[verdict.key]
+    const value = verdict.key === "location"
+      ? city || (answers && answers.home_city) || profile.location
+      : profile[verdict.key]
     if (!value) continue
     if (el.value && el.value.trim()) continue  // never overwrite something already there
     if (el.tagName === "SELECT") {
@@ -125,9 +180,28 @@
     filled.push(`${short}: ${String(value).slice(0, 40)}`)
   }
 
+  for (const group of radioGroups.values()) {
+    const question = groupQuestion(group[0])
+    const verdict = F.classify({ label: question, type: "radio" })
+    const short = question.replace(/\s+/g, " ").trim().slice(0, 60) || "choice"
+    const labels = group.map((r) => (labelFor(r) || r.value || "").replace(/\s+/g, " ").trim())
+    const value = verdict.answer ? F.resolveAnswer(verdict.answer, answers, { question, inputType: "radio", city }) : null
+    const idx = value ? F.matchChoice(labels, value) : -1
+    if (idx >= 0 && !group.some((r) => r.checked)) {
+      undo.push({ el: group[idx], radio: true })
+      setChecked(group[idx], true)
+      group.forEach((r) => { r.style.outline = BLUE; r.dataset.scout = "filled" })
+      answered.push(`${short}: ${labels[idx].slice(0, 40)}`)
+    } else if (!group.some((r) => r.checked)) {
+      group.forEach((r) => { r.style.outline = AMBER; r.dataset.scout = "yours" })
+      yours.push(`${short} (${verdict.reason})`)
+    }
+  }
+
   globalThis.__scoutUndo = () => {
     for (const u of undo) {
       if (u.file) { u.el.value = ""; u.el.dispatchEvent(new Event("change", { bubbles: true })) }
+      else if (u.radio) setChecked(u.el, false)
       else setValue(u.el, u.value)
       u.el.style.outline = ""
       delete u.el.dataset.scout
@@ -135,10 +209,10 @@
     document.querySelectorAll("[data-scout='yours']").forEach((el) => { el.style.outline = ""; delete el.dataset.scout })
     document.getElementById(PANEL_ID)?.remove()
   }
-  showPanel({ filled, yours })
-  return report({ status: "filled", filled: filled.length, yours: yours.length })
+  showPanel({ filled, answered, yours })
+  return report({ status: "filled", filled: filled.length, answered: answered.length, yours: yours.length })
 
-  function showPanel({ filled, yours, stopped }) {
+  function showPanel({ filled, answered = [], yours, stopped }) {
     document.getElementById(PANEL_ID)?.remove()
     const box = document.createElement("div")
     box.id = PANEL_ID
@@ -151,6 +225,8 @@
     if (stopped) box.append(h("div", stopped, "color:#fbbf24"))
     else {
       box.append(h("div", `Filled ${filled.length} field${filled.length === 1 ? "" : "s"} (green). Check each one.`))
+      if (answered.length) box.append(h("div", `Answered ${answered.length} question${answered.length === 1 ? "" : "s"} from your saved answers (blue).`, "margin-top:4px;color:#93c5fd"))
+      if (city) box.append(h("div", `Job city: ${city}`, "color:#9ca3af"))
       if (yours.length) box.append(h("div", `${yours.length} question${yours.length === 1 ? " is" : "s are"} yours to answer (amber):`, "margin-top:6px;color:#fbbf24"))
       const ul = document.createElement("ul")
       ul.style.cssText = "margin:4px 0 0 16px;padding:0"

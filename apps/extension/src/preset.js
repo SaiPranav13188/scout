@@ -5,11 +5,13 @@
  */
 async function scoutLoadPreset() {
   const have = await chrome.storage.local.get(["profile", "resumeFile"])
-  if (have.profile) return false
   try {
     const res = await fetch(chrome.runtime.getURL("preset/profile.json"))
     if (!res.ok) return false
-    const data = { profile: await res.json() }
+    const preset = await res.json()
+    // Load on first run, and again whenever a newer build (`cli extension-build`) is installed.
+    if (have.profile && (!preset.built_at || have.profile.built_at === preset.built_at)) return false
+    const data = { profile: preset }
     const pdf = await fetch(chrome.runtime.getURL("preset/resume.pdf"))
     if (pdf.ok) {
       const bytes = new Uint8Array(await pdf.arrayBuffer())

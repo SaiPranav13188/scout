@@ -67,3 +67,51 @@ test("the content script can never submit or click", () => {
   assert.equal(manifest.host_permissions, undefined)  // no standing access to any site
   assert.equal(manifest.content_scripts, undefined)   // runs only when I click "Fill this page"
 })
+
+const { resolveAnswer, matchChoice, jobCity } = require("../src/fields.js")
+const ANSWERS = {
+  relocate_cities: ["Bengaluru", "Hyderabad", "Chennai"], notice_period: "Immediate", start_date: "Immediately",
+  current_ctc: "0 (Fresher)", expected_ctc: "5-6 LPA (negotiable)", work_auth_india: "Yes", sponsorship_india: "No",
+  backlogs: "No", tenth: { board: "SSC", score: "10 CGPA", year: null }, twelfth: { board: "Intermediate", score: "96.8%", year: null },
+  dob: "2005-07-08", gender: "Male", disability: "No", heard_from: "LinkedIn", languages: "English, Hindi, Telugu",
+}
+const ans = (label, inputType = "text", city = null) => {
+  const v = classify({ label, type: inputType === "radio" ? "radio" : "text" })
+  return v.answer ? resolveAnswer(v.answer, ANSWERS, { question: label, inputType, city }) : undefined
+}
+
+test("saved answers fill the questions I answered once", () => {
+  assert.equal(ans("Are you legally authorized to work in India?"), "Yes")
+  assert.equal(ans("Will you require visa sponsorship?"), "No")
+  assert.equal(ans("Notice period"), "Immediate")
+  assert.equal(ans("Notice period (days)", "number"), "0")
+  assert.equal(ans("Current CTC"), "0 (Fresher)")
+  assert.equal(ans("Expected CTC"), "5-6 LPA (negotiable)")
+  assert.equal(ans("Expected CTC (in INR)", "number"), null)  // unit unclear: left for me
+  assert.equal(ans("Do you have any active backlogs?", "radio"), "No")
+  assert.equal(ans("Date of birth", "date"), "2005-07-08")
+  assert.equal(ans("Date of Birth (DD/MM/YYYY)"), "08/07/2005")
+  assert.equal(ans("Gender", "radio"), "Male")
+  assert.equal(ans("How did you hear about us?"), "LinkedIn")
+  assert.equal(ans("12th percentage"), "96.8%")
+  assert.equal(ans("10th board"), "SSC")
+  assert.equal(ans("Year of passing 12th"), null)  // not saved: left for me
+})
+
+test("answers that depend on the job stay safe", () => {
+  assert.equal(ans("Are you legally authorized to work in the United States?"), null)
+  assert.equal(ans("Will you require sponsorship for a UK work visa?"), null)
+  assert.equal(ans("Are you willing to relocate?", "radio", "Hyderabad"), "Yes")
+  assert.equal(ans("Are you willing to relocate?", "radio", null), null)
+  assert.equal(jobCity("Software Engineer · Bangalore, Karnataka", ANSWERS.relocate_cities), "Bengaluru")
+  assert.equal(jobCity("Remote, India", ANSWERS.relocate_cities), null)
+  assert.equal(classify({ label: "I certify that my answers are true", type: "checkbox" }).answer, undefined)
+  assert.equal(classify({ label: "Were you referred by an employee?", type: "radio" }).answer, undefined)
+})
+
+test("choices are matched exactly", () => {
+  assert.equal(matchChoice(["Select…", "Female", "Male", "Prefer not to say"], "Male"), 2)
+  assert.equal(matchChoice(["None", "No", "Yes"], "No"), 1)
+  assert.equal(matchChoice(["Yes, I am authorized", "No"], "Yes"), 0)
+  assert.equal(matchChoice(["15 days", "Immediate joiner", "30 days"], "Immediate"), 1)
+})

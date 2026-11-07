@@ -11,6 +11,7 @@ const msg = document.getElementById("msg")
 let resumeFile = null
 
 function render(profile = {}) {
+  document.getElementById("answers").value = profile.answers ? JSON.stringify(profile.answers, null, 2) : ""
   form.innerHTML = ""
   for (const [key, label] of FIELDS) {
     const l = document.createElement("label")
@@ -25,6 +26,8 @@ function render(profile = {}) {
 
 function read() {
   const out = { version: 1 }
+  const raw = document.getElementById("answers").value.trim()
+  if (raw) out.answers = JSON.parse(raw)  // a typo throws; Save shows the error
   for (const [key] of FIELDS) {
     const v = form.elements[key].value.trim()
     out[key] = v || null
@@ -38,7 +41,9 @@ document.getElementById("import").addEventListener("change", async (e) => {
   try {
     const p = JSON.parse(await f.text())
     if (p.version !== 1) throw new Error("not a Scout profile file")
-    render(p)
+    let kept = null
+    try { kept = JSON.parse(document.getElementById("answers").value || "null") } catch (_) { /* keep none */ }
+    render({ ...p, answers: p.answers || kept })  // importing a new profile keeps my saved answers
     msg.textContent = p.reviewed ? "Imported. Check the fields, then Save." : "Imported. Your resume isn't marked reviewed in Scout yet: check every field."
   } catch (err) {
     msg.style.color = "#b91c1c"
@@ -58,7 +63,14 @@ document.getElementById("resume").addEventListener("change", async (e) => {
 })
 
 document.getElementById("save").addEventListener("click", async () => {
-  const data = { profile: read() }
+  let data
+  try {
+    data = { profile: read() }
+  } catch (err) {
+    msg.style.color = "#b91c1c"
+    msg.textContent = `Saved answers aren't valid JSON: ${err.message}`
+    return
+  }
   if (resumeFile) data.resumeFile = resumeFile
   await chrome.storage.local.set(data)
   msg.style.color = "#15803d"
