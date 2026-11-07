@@ -222,10 +222,14 @@ class _FakeLLM:
         from scout_core.llm import Usage
         self.usage, self.jobs = Usage(), []
 
+    seniority = None  # optional fixed answer for seniority checks
+
     async def json(self, schema, prompt, *, purpose, temperature=0.1):
-        self.jobs.append(prompt.split("Title: ")[1].split("\n")[0])
         self.usage.calls += 1
         self.usage.by_call.append({"model": "fake-model"})
+        if purpose == "seniority":
+            return schema(**(self.seniority or {"verdict": "unclear"}))
+        self.jobs.append(prompt.split("Title: ")[1].split("\n")[0])
         return schema(required_skills=["Python"], rubric_score=80, reasons=["fits"])
 
     async def embed(self, texts, *, purpose, dims=768):
@@ -330,3 +334,70 @@ async def test_resume_backfill_stamps_old_scores_once(session, db_url, monkeypat
     (tmp_path / "x.pdf").write_bytes(b"not a pdf")
     with pytest.raises(ResumeFileError):
         await work.resume_backfill(str(tmp_path / "x.pdf"))
+
+
+
+async def _seed_unclear_job(session, title, sid, description):
+    from scout_core.filters.fresher import FresherRules
+    from scout_core.filters.relevance import RelevanceRules
+    from scout_core.pipeline.evaluate import Preferences
+    from scout_core.pipeline.ingest import get_or_create_company, store_jobs
+    from scout_core.types import NormalizedJob
+    company = await get_or_create_company(session, name="Acme AI", website=None, source="test")
+    await store_jobs(session, [NormalizedJob(
+        source="lever", source_job_id=sid, company_name="Acme AI", title=title, description_text=description,
+        locations=["Bengaluru"], apply_url=f"https://jobs.lever.co/acme/{sid}", board_token="acme")],
+        company=company, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+    await session.commit()
+
+
+FRESHER_TEXT = ("We are building an LLM platform in Python and FastAPI. This role suits people who graduated "
+                "this year; strong projects matter more than a long CV. You will write tests. " * 2)
+
+BACKEND_TEXT = ("We are building an LLM platform in Python and FastAPI. You will design APIs, write tests, "
+                "and ship features with a small team. Experience building backend services in production "
+                "for several years is expected. You will own the architecture of our retrieval stack. " * 2)
+
+
+@pytest.mark.db
+@pytest.mark.parametrize(("answer", "visible", "passed"), [
+    ({"verdict": "needs_experience", "evidence": "Experience building backend services in production for several years is expected."}, False, False),
+    ({"verdict": "fresher_ok", "evidence": "Experience building backend services in production for several years is expected."}, False, True),  # quote contradicts the answer
+    ({"verdict": "fresher_ok", "evidence": "and ship features with a small team"}, False, True),  # real, but says nothing about freshers
+    ({"verdict": "fresher_ok", "evidence": "Freshers are welcome to apply for this role."}, False, True),  # invented quote
+    ({"verdict": "unclear", "evidence": ""}, False, True),
+])
+async def test_unclear_experience_settled_only_by_verified_quotes(session, db_url, monkeypatch, answer, visible, passed):
+    from scout_core.db.models import Job
+    from scout_core.services import visible_feed_query
+    monkeypatch.setattr(get_settings(), "database_url", db_url)
+    await _seed_unclear_job(session, "Backend Engineer (Python)", "u1", BACKEND_TEXT)
+    job = await session.scalar(select(Job))
+    assert job.passed_filters and job.experience_unclear
+    fake = _FakeLLM()
+    fake.seniority = answer
+    counts = await work.check_unclear_experience(fake)
+    assert counts["checked"] == 1
+    await session.refresh(job)
+    assert job.passed_filters is passed
+    shown = (await session.execute(visible_feed_query().with_only_columns(func.count()))).scalar()
+    assert (shown == 1) is visible
+    assert job.fresher_reasons[0].startswith("AI check:")
+    # Checked once: never sent to Gemini again.
+    assert (await work.check_unclear_experience(fake))["checked"] == 0
+
+
+@pytest.mark.db
+async def test_unclear_job_with_fresher_quote_reaches_feed(session, db_url, monkeypatch):
+    from scout_core.db.models import Job
+    monkeypatch.setattr(get_settings(), "database_url", db_url)
+    # No numbers and no phrase the plain rules know: unclear until the description is read.
+    await _seed_unclear_job(session, "Backend Engineer (Python)", "f1", FRESHER_TEXT)
+    job = await session.scalar(select(Job))
+    assert job.experience_unclear
+    fake = _FakeLLM()
+    fake.seniority = {"verdict": "fresher_ok",
+                      "evidence": "This role suits people who graduated this year; strong projects matter more than a long CV."}
+    assert (await work.check_unclear_experience(fake))["fresher_ok"] == 1
+    await session.refresh(job)
+    assert job.experience_unclear is False and job.passed_filters

@@ -123,6 +123,28 @@ unclear (title-only alert emails); an "Experience unclear" chip shows them on re
 longer stamp the email's arrival time as the posting time ("Posted date not given" unless the site states
 it). LinkedIn alerts from a search filtered to Entry level / Internship are trusted as entry-level.
 
+### Stricter fresher filter + India boards (2026-11-07, afternoon)
+
+Your rule: never show a job that needs experience. Changes, each checked on real data:
+- A requirement marked "preferred" above 1 year now drops the job (unless the posting also invites freshers).
+- "3–6 years in data science", "2+ years building…" and "8-year experience" are now read as requirements
+  (before, the word "experience" had to be nearby). Replayed over 19,063 saved real postings: 627 more
+  experienced jobs dropped; a random sample of 30 were all real requirements.
+- Titles: "SDE3", "Intermediate" (GitLab's mid-level grade), "mid-level", "experienced", "level 2/3" drop;
+  "Engineer I", "Developer I" count as entry level; intern-to-full-time roles are shown (were hidden).
+- Jobs the rules still can't decide (no years stated) are read by Gemini, which must quote the exact sentence;
+  plain code checks the quote is in the posting and actually says what Gemini claims. First run: 22 of 27
+  dropped with quotes like "4–6 years of building and operating production backend systems", 5 stay hidden.
+- `cli recheck-feed` re-applies the rules to jobs already stored (20 experienced jobs removed today).
+- 52 India-hiring companies' public boards added (Paytm, Meesho, Databricks, Stripe, Okta, MongoDB, Sarvam AI,
+  CRED, Groww, Zeta, HighRadius, InMobi, Hevo Data…; `scout_core/seeds_india.py`, `cli add-india-boards`):
+  279 boards, 12,673 jobs scanned.
+
+Honest result: company boards post few explicit fresher roles; 3 open India roles are confirmed for
+freshers today. Most fresher hiring is on LinkedIn / Naukri / Internshala. LinkedIn alert emails carry only
+a title, so Scout can only trust them when the alert's search is filtered to Entry level / Internship.
+Seven such searches are now on the Saved searches page (LinkedIn and Naukri, India, last 24 h).
+
 ### Next steps for you
 
 1. Apply migration 0005 to the live database (adds `job_scores.profile_hash`; one active resume version):

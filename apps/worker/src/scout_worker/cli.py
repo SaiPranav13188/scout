@@ -12,6 +12,9 @@
   uv run python -m scout_worker.cli resume-parse private/resume.pdf
   uv run python -m scout_worker.cli score 10                 # score up to 10 feed jobs now
   uv run python -m scout_worker.cli resume-backfill private/resume.pdf [--apply]  # one-time upgrade
+  uv run python -m scout_worker.cli add-india-boards          # India hiring companies' public boards
+  uv run python -m scout_worker.cli seniority-check 40       # Gemini reads "experience unclear" jobs
+  uv run python -m scout_worker.cli recheck-feed [--apply]  # re-run the fresher filter on feed jobs
   uv run python -m scout_worker.cli match-eval [--maybe-is-apply]  # match score vs my labels (read-only)
 """
 
@@ -40,6 +43,35 @@ async def add_board(ats: str, token: str, name: str, website: str | None) -> Non
                                discovery_method="manual", evidence_url=raw.url))
         await s.commit()
     print(f"added {ats}/{token} ({count} jobs listed right now)")
+
+
+async def add_india_boards() -> None:
+    """Add the checked-in India board list (scout_core.seeds_india); each board is confirmed live first."""
+    from sqlalchemy import func, select
+
+    from scout_core.seeds_india import INDIA_BOARDS
+
+    added = skipped = dead = 0
+    async with PoliteClient(max_retries=1) as client:
+        for name, ats, token in INDIA_BOARDS:
+            async with worker_session() as s:
+                exists = await s.scalar(select(CompanyWatchlist).where(
+                    CompanyWatchlist.ats_type == AtsType(ats), func.lower(CompanyWatchlist.board_token) == token.lower()))
+                if exists:
+                    skipped += 1
+                    continue
+                try:
+                    raw = await SOURCES[ats].fetch(client, token)
+                except Exception as exc:  # noqa: BLE001 - a dead board is skipped, not fatal
+                    print(f"  skip {name} ({ats}/{token}): {exc}")
+                    dead += 1
+                    continue
+                company = await get_or_create_company(s, name=name, website=None, source="india_list")
+                s.add(CompanyWatchlist(company_id=company.id, ats_type=AtsType(ats), board_token=token,
+                                       discovery_method="india_list", evidence_url=raw.url))
+                await s.commit()
+                added += 1
+    print(f"added {added} boards, {skipped} already watched, {dead} not reachable")
 
 
 async def gmail_connect(config: dict) -> None:
@@ -111,6 +143,14 @@ def main() -> None:
             sys.exit(f"No file at {Path(pdf).resolve()}.\nRun this from the scout folder (cd to it first), "
                      "or give the full path to your resume PDF.")
         print(json.dumps(asyncio.run(work.resume_backfill(pdf, apply="--apply" in args)), indent=2, default=str))
+    elif cmd == "add-india-boards":
+        asyncio.run(add_india_boards())
+    elif cmd == "seniority-check":
+        from scout_core.llm import Gemini
+        print(json.dumps(asyncio.run(work.check_unclear_experience(
+            Gemini.from_settings(), limit=int(args[0]) if args else 15)), indent=2))
+    elif cmd == "recheck-feed":
+        print(json.dumps(asyncio.run(work.recheck_feed(apply="--apply" in args)), indent=2))
     elif cmd == "match-eval":
         from scout_core.match_eval import to_markdown
         print(to_markdown(asyncio.run(work.match_eval("--maybe-is-apply" in args))))

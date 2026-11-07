@@ -7,8 +7,9 @@ Decision rules for an experience requirement (min, max) with limit L = max_exper
   keep, but unclear, if min == L == max      (exactly "1 year": borderline)
   keep  otherwise                            ("0-1 years", "0-12 months", "fresher")
 
-Requirements qualified as soft ("preferred", "nice to have", "a plus") never drop a job on their
-own; they mark it experience_unclear so I can correct it in the UI.
+A requirement qualified as soft ("preferred", "nice to have", "a plus") that is above the limit
+also drops the job (a posting that prefers 3+ years is not looking for a fresher; my rule,
+2026-11-07), unless the posting explicitly invites freshers ("3+ years a plus, freshers can apply").
 """
 
 import re
@@ -40,11 +41,15 @@ class FresherRules:
         "head of", "vp", "vice president", "chief", "distinguished", "expert", "ii", "iii", "iv",
         "sde 2", "sde-2", "sde2", "sde 3", "sde-3", "engineer 2", "engineer 3", "developer 2",
         "developer 3", "mts 2", "mts-2", "l2", "l3", "l4",
+        "sde3", "sde 4", "sde-4", "sde4", "engineer 4", "level 2", "level 3",
+        # GitLab-style grades and plain wording that mean "not a fresher" (added 2026-11-07).
+        "intermediate", "mid-level", "mid level", "experienced",
     ])
     title_keep_words: list[str] = field(default_factory=lambda: [
         "fresher", "freshers", "graduate", "new grad", "entry level", "entry-level", "trainee",
         "junior", "jr", "associate", "apprentice", "campus", "early career", "university grad",
         "sde 1", "sde-1", "sde i", "software engineer i", "engineer 1", "level 1", "l1",
+        "engineer i", "developer i", "analyst i", "new graduate", "university graduate",
     ])
     # Title words that look like drop words but are not seniority.
     title_drop_exceptions: list[str] = field(default_factory=lambda: [
@@ -88,7 +93,10 @@ _MONTHS = r"(?:months?|mos?)"
 _DASH = r"\s*(?:-|to|–|—)\s*"
 
 _EXPERIENCE_CONTEXT = re.compile(
-    r"experience|exp\b|yoe|work(?:ing)? in|in (?:the )?industry|professional|hands[- ]on|background",
+    r"experience|exp\b|yoe|work(?:ing)? in|in (?:the )?industry|professional|hands[- ]on|background|"
+    # "3-6 years in data science", "2+ years building backend systems" (real postings, 2026-11-07)
+    r"years?\s+(?:in|as|of|building|working|developing|designing|delivering|shipping|writing|running|"
+    r"leading|owning|managing)\s+(?!a row|age|growth|history|business|the (?:last|past))",
 )
 _SOFT = re.compile(
     r"prefer|preferred|nice[- ]to[- ]have|is a plus|a plus|bonus|good to have|desirable|ideally|"
@@ -109,14 +117,14 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # "3+ years", "5 plus years", "2+ yrs"
     (re.compile(rf"\b{_NUM}\s*(?:\+|plus)\s*{_YEARS}"), "plus_years"),
     # "minimum 2 years", "at least 3 years", "min. 1 year"
-    (re.compile(rf"\b(?:minimum(?: of)?|min\.?|at least|atleast)\s*{_NUM}\s*{_YEARS}"), "min_years"),
+    (re.compile(rf"\b(?:minimum(?: of)?|min\.?|at least|atleast)\s*{_NUM}[\s-]*{_YEARS}"), "min_years"),
     # "2 or more years", "more than 3 years", "over 4 years"
     (re.compile(rf"\b{_NUM}\s*or more\s*{_YEARS}"), "plus_years"),
     (re.compile(rf"\b(?:more than|over|above|greater than)\s*{_NUM}\s*{_YEARS}"), "more_than_years"),
     # "upto 1 year", "up to 2 years", "less than 1 year", "under 1 year"
     (re.compile(rf"\b(?:up ?to|upto|less than|under|max(?:imum)?(?: of)?)\s*{_NUM}\s*{_YEARS}"), "upto_years"),
     # "3 years of experience", "2 yrs experience", "1 year exp"
-    (re.compile(rf"\b{_NUM}\s*{_YEARS}\s*(?:of\s+)?(?:\w+\s+){{0,3}}?(?:experience|exp\b)"), "n_years_exp"),
+    (re.compile(rf"\b{_NUM}[\s-]*{_YEARS}\s*(?:of\s+)?(?:\w+\s+){{0,3}}?(?:experience|exp\b)"), "n_years_exp"),
     # "experience: 2 years", "experience of 3 years", "experience - 0 to 1 years" handled by range
     (re.compile(rf"(?:experience|exp)\s*(?:required|needed)?\s*(?:[:\-]|of)\s*{_NUM}\s*{_YEARS}"), "exp_colon_years"),
 ]
@@ -241,7 +249,8 @@ def classify(title: str, description: str | None, rules: FresherRules | None = N
         return FresherVerdict(Decision.DROP, Confidence.HIGH, None, None, False,
                               ["internship without full-time conversion"], [])
     if is_intern and converts:
-        reasons.append("intern-to-full-time role")
+        # An internship that converts to full time is a fresher role by definition.
+        return FresherVerdict(Decision.KEEP, Confidence.HIGH, 0, None, False, ["intern-to-full-time role"], [])
 
     # 3. Explicit experience requirements (title first, then description).
     reqs = extract_requirements(title) + (extract_requirements(description) if description else [])
@@ -276,10 +285,15 @@ def classify(title: str, description: str | None, rules: FresherRules | None = N
 
     if soft:
         soft_too_high = [r for r in soft if _requirement_fits(r, limit) is False]
-        if soft_too_high:
-            reasons.append(f"prefers {_fmt(soft_too_high[0])} experience (not a hard requirement)")
-            return FresherVerdict(Decision.KEEP, Confidence.LOW, None, None, True,
+        if soft_too_high and text_keep:
+            # "3+ years is a plus, freshers can apply": the posting itself invites freshers.
+            reasons.append(f"prefers {_fmt(soft_too_high[0])} experience, but welcomes freshers")
+            return FresherVerdict(Decision.KEEP, Confidence.MEDIUM, 0, None, False,
                                   reasons + _keep_reasons(title_keep, text_keep), reqs)
+        if soft_too_high:
+            worst = soft_too_high[0]
+            return FresherVerdict(Decision.DROP, Confidence.HIGH, worst.min, worst.max, False,
+                                  [f"prefers {_fmt(worst)} experience: \"{worst.evidence}\""], reqs)
 
     # 4. No numeric requirement: rely on explicit fresher wording.
     if text_keep or title_keep:

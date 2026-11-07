@@ -64,10 +64,20 @@ def test_unclear_experience_is_kept_and_flagged():
     assert v.confidence == Confidence.LOW
 
 
-def test_soft_requirement_does_not_drop_but_flags():
+def test_soft_requirement_kept_only_when_freshers_are_invited():
     v = classify("Backend Engineer", "3+ years of experience is a plus, freshers can apply.")
-    assert v.decision == Decision.KEEP
-    assert v.experience_unclear is True
+    assert v.decision == Decision.KEEP and v.experience_unclear is False
+    assert "welcomes freshers" in v.reasons[0]
+
+
+@pytest.mark.parametrize("text", [
+    "3+ years of experience preferred.",
+    "Ideally you have 2+ years building backend systems.",
+    "Nice to have: 4 years of experience with Kubernetes.",
+])
+def test_soft_requirement_above_limit_drops(text):
+    v = classify("Application Engineer", text)
+    assert v.decision == Decision.DROP and "prefers" in v.reasons[0]
 
 
 def test_mixed_levels_kept_as_unclear():
@@ -129,3 +139,49 @@ def test_internshala_job_offer_after_internship_counts_as_conversion():
     # Real Internshala card text (Nov 2026).
     v = classify("Marketing Analytics", "Job offer upto ₹ 3.6LPA post internship", employment_type="Intern")
     assert v.decision == Decision.KEEP
+
+
+@pytest.mark.parametrize("title", [
+    "SDE3, Infrastructure Security Engineer (DevSecOps)",  # Sarvam AI, 2026-11-07
+    "Intermediate Backend Engineer, Security Factory",  # GitLab grade = mid-level
+    "Mid-Level Software Engineer", "Experienced Data Engineer", "Software Engineer Level 2",
+])
+def test_more_senior_titles_dropped(title):
+    assert classify(title, "Build things.").decision == Decision.DROP
+
+
+@pytest.mark.parametrize("title", ["Technical Account Engineer I", "Software Developer I", "Data Analyst I"])
+def test_level_one_titles_are_entry_level(title):
+    v = classify(title, "Work with customers.")
+    assert v.decision == Decision.KEEP and not v.experience_unclear
+
+
+def test_level_two_roman_still_dropped():
+    assert classify("Technical Account Engineer II", "x").decision == Decision.DROP
+
+
+def test_intern_to_full_time_is_confirmed_not_unclear():
+    v = classify("Software Development Engineer Intern", "Strong performers receive a pre-placement offer (PPO).")
+    assert v.decision == Decision.KEEP and not v.experience_unclear and v.reasons == ["intern-to-full-time role"]
+
+
+@pytest.mark.parametrize("text", [  # exact wording from real postings that slipped through (2026-11-07)
+    "3–6 years in frontend engineering with shipped, production-grade products",
+    "2–5 years in DevOps, SRE, infrastructure or backend engineering",
+    "Minimum 8-year experience working as Support Engineer/ Sr. Support Engineer",
+    "1-5 years in conversational AI, solution engineering, system integration",
+    "4–6 years of building and operating production backend systems.",
+    "You bring 2+ years building backend systems.",
+])
+def test_years_in_a_field_is_a_requirement(text):
+    v = classify("Software Engineer", text)
+    assert v.decision == Decision.DROP, v.reasons
+
+
+@pytest.mark.parametrize("text", [
+    "We have grown 3x in 2 years in business.", "Our company was founded 10 years ago.",
+    "A 2-year fixed-term contract.", "Over the last 5 years in India we've served 1M users.",
+    "0-1 years in software engineering or internships.",
+])
+def test_non_requirements_and_fresher_ranges_still_kept(text):
+    assert classify("Software Engineer", text).decision == Decision.KEEP

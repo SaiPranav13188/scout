@@ -47,6 +47,12 @@ Reviewing samples of the real run found these mistakes. Each now has a regressio
 **Precision and recall against your judgement.** This needs the 30-50 jobs you label in Phase 3
 (apply / maybe / no). Until then, the numbers above show what the filter *does*, not how often it agrees with you.
 
+### Stricter rules (2026-11-07)
+Replay of old vs new rules over 19,063 saved real postings: 615 "unclear" and 12 "kept" jobs now dropped
+for stated experience; 4 intern-to-full-time roles now kept. Random sample of 30 new drops: 30 real
+requirements, 0 wrong. AI second opinion on undecidable postings: 27 read, 22 dropped (each with a verified
+quote, reviewed by hand: all correct), 0 shown, 5 left hidden.
+
 ## 2. Dedupe (spec §13.3)
 
 - Unit tests: same posting via two sources (tracking params, `/apply` suffix, both Greenhouse hosts) collapses

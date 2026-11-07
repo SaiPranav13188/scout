@@ -482,6 +482,51 @@ async def _with_db_retry(fn, attempts: int = 3):
             await asyncio.sleep(2 * (attempt + 1))
 
 
+async def check_unclear_experience(llm, limit: int = 15) -> dict:
+    """Ask Gemini about feed jobs whose experience level the rules couldn't decide (see seniority.py).
+
+    Only jobs with a real description, not checked before, not corrected by me. Each verdict is
+    saved on its own so a quota error part-way keeps the work already done.
+    """
+    from sqlalchemy import Text, cast
+
+    from scout_core.llm import LLMError
+    from scout_core.seniority import MARK, read_seniority
+
+    async def load(s):
+        return (await s.execute(visible_feed_query(include_unclear=True).where(
+            Job.status == ApplicationStatus.DISCOVERED, Job.experience_unclear.is_(True),
+            Job.experience_corrected_by_me.is_not(True), func.length(Job.description) > 300,
+            ~cast(Job.fresher_reasons, Text).contains(MARK))
+            .order_by(Job.relevance_score.desc(), Job.first_seen_at.desc()).limit(limit)
+            .with_only_columns(Job.id, Job.title, Job.description))).all()
+
+    counts = {"checked": 0, "fresher_ok": 0, "needs_experience": 0, "unclear": 0, "errors": 0}
+    for job_id, title, description in await _with_db_retry(load):
+        try:
+            verdict, reason = await read_seniority(llm, title=title, description=description)
+        except LLMError as exc:
+            counts["errors"] += 1
+            if "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc):
+                break
+            continue
+
+        async def save(s, job_id=job_id, verdict=verdict, reason=reason):
+            job = await s.get(Job, job_id)
+            job.fresher_reasons = [reason, *(job.fresher_reasons or [])]
+            if verdict == "fresher_ok":
+                job.experience_unclear, job.fresher_confidence = False, "medium"
+            elif verdict == "needs_experience":
+                job.passed_filters = False
+                job.filter_reasons = ["experience: " + reason, *(job.filter_reasons or [])]
+            await s.commit()
+
+        await _with_db_retry(save)
+        counts["checked"] += 1
+        counts[verdict] += 1
+    return counts
+
+
 async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
     """Score feed jobs against the active master resume: unscored jobs first, then jobs whose
     score was computed from an older resume or older target roles (different profile fingerprint).
@@ -525,6 +570,10 @@ async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
         return {"skipped": "gemini_not_configured"}
 
     async with worker_session() as session, track_run(session, "scoring", slot_key) as run:
+        # First settle "experience unclear" jobs, so alerts only ever carry checked jobs.
+        for k, v in (await check_unclear_experience(llm)).items():
+            run.inc(f"seniority_{k}", v)
+        resume, fingerprint, cfg, jobs = await _with_db_retry(load)  # without jobs the check just dropped
         weights = Weights(**cfg.get("weights", {}))
         targets = cfg.get("target_roles", [])
         run.inc("to_score", len(jobs))
@@ -558,6 +607,37 @@ async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
 
 
 RUNNERS["scoring"] = run_scoring
+
+
+async def recheck_feed(apply: bool = False) -> dict:
+    """Re-run the fresher filter (current rules) on jobs still waiting in the feed.
+
+    Filter rules only reach new jobs at ingest; this applies a stricter rule to jobs already
+    stored. Jobs I corrected by hand are left alone. Dry run unless apply=True.
+    """
+    from scout_core.filters.fresher import Decision, classify
+    from scout_core.settings_store import load_rules
+
+    async with worker_session() as session:
+        fresher_rules, _, _ = await load_rules(session)
+        jobs = (await session.scalars(select(Job).where(
+            Job.passed_filters.is_(True), Job.status == ApplicationStatus.DISCOVERED,
+            Job.experience_corrected_by_me.is_not(True)))).all()
+        dropped: list[str] = []
+        for job in jobs:
+            v = classify(job.title, job.description, fresher_rules, job.employment_type)
+            if v.decision == Decision.DROP:
+                dropped.append(f"{job.title} @ {job.company_name}: {v.reasons[0]}"[:160])
+                if apply:
+                    job.passed_filters = False
+                    job.filter_reasons = ["experience: " + "; ".join(v.reasons), *(job.filter_reasons or [])]
+            elif apply:
+                job.experience_min, job.experience_max = v.experience_min, v.experience_max
+                job.experience_unclear, job.fresher_confidence = v.experience_unclear, v.confidence.value
+                job.fresher_reasons = v.reasons
+        if apply:
+            await session.commit()
+        return {"checked": len(jobs), "dropped": len(dropped), "examples": dropped[:15], "applied": apply}
 
 
 async def resume_backfill(pdf_path: str, apply: bool = False) -> dict:
