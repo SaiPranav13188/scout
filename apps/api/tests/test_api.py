@@ -246,3 +246,23 @@ async def test_match_score_in_feed_and_best_fit_sort(client, session):
     assert best[0]["title"] == "Backend Engineer"
     assert best[0]["match"]["score"] == 91 and best[0]["match"]["band"] == "top"
     assert best[0]["match"]["missing_skills"] == ["go"]
+
+
+async def test_unclear_experience_hidden_unless_asked(client, session):
+    from scout_core.filters.fresher import FresherRules
+    from scout_core.filters.relevance import RelevanceRules
+    from scout_core.pipeline.evaluate import Preferences
+    await _seed(session)
+    company = await get_or_create_company(session, name="Acme AI", website=None, source="test")
+    await store_jobs(session, [NormalizedJob(
+        source="linkedin_alert", source_job_id="9", company_name="Acme AI", title="Machine Learning Engineer",
+        locations=["Bengaluru"], apply_url="https://www.linkedin.com/jobs/view/9/")],
+        company=company, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+    await session.commit()
+    default = (await client.get("/api/jobs", headers=_auth())).json()
+    assert "Machine Learning Engineer" not in [j["title"] for j in default["items"]]
+    assert default["facets"]["experience"]["unclear"] == 1
+    shown = (await client.get("/api/jobs", params={"include_unclear": True}, headers=_auth())).json()
+    assert "Machine Learning Engineer" in [j["title"] for j in shown["items"]]
+    stats = (await client.get("/api/stats", headers=_auth())).json()
+    assert stats["open_in_feed"] == default["total"]  # Telegram/stats follow the same rule

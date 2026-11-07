@@ -91,7 +91,10 @@ export interface JobPage {
   items: Job[]
   total: number
   next_offset: number | null
-  facets: { source: Record<string, number>; family: Record<string, number>; location: Record<string, number> }
+  facets: {
+    source: Record<string, number>; family: Record<string, number>; location: Record<string, number>
+    experience?: { unclear: number }
+  }
 }
 
 export interface Stats {
@@ -154,5 +157,6 @@ export interface JobFilters {
   remote?: boolean
   posted_within_hours?: number
   all_roles?: boolean
+  include_unclear?: boolean
   sort?: "newest" | "relevance"
 }

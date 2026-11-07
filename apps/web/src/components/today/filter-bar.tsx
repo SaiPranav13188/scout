@@ -80,7 +80,8 @@ export function FilterBar({ filters, onChange, facets, total }: {
   }
   const activeCount =
     (filters.family?.length ?? 0) + (filters.location?.length ?? 0) +
-    (filters.posted_within_hours ? 1 : 0) + (filters.all_roles ? 1 : 0) + (filters.q ? 1 : 0)
+    (filters.posted_within_hours ? 1 : 0) + (filters.all_roles ? 1 : 0) + (filters.q ? 1 : 0) +
+    (filters.include_unclear ? 1 : 0)
 
   return (
     <div className="space-y-3">
@@ -123,6 +124,10 @@ export function FilterBar({ filters, onChange, facets, total }: {
         </Chip>
         <Chip active={Boolean(filters.all_roles)} onClick={() => onChange({ ...filters, all_roles: !filters.all_roles })}>
           Show all roles
+        </Chip>
+        <Chip active={Boolean(filters.include_unclear)} count={facets?.experience?.unclear}
+          onClick={() => onChange({ ...filters, include_unclear: !filters.include_unclear })}>
+          Experience unclear
         </Chip>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">

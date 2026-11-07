@@ -91,3 +91,18 @@ export function ycShort(batch: string) {
   const m = batch.match(/^(Winter|Summer|Spring|Fall)\s+\d{2}(\d{2})$/)
   return m ? `${m[1][0]}${m[2]}` : batch
 }
+
+/** Honest "when was this posted" label. Alert emails don't say, so we never pretend they do. */
+export function postedLabel(job: { posted_at: string | null; posted_at_kind: string | null; first_seen_at: string }) {
+  const seen = timeAgo(job.first_seen_at)
+  if (!job.posted_at) {
+    return {
+      short: "Posted date not given",
+      tooltip: `The job site's alert email didn't say when this was posted. Scout first saw it ${seen}.`,
+    }
+  }
+  const when = new Date(job.posted_at).toLocaleString("en-IN")
+  if (job.posted_at_kind === "updated") return { short: `updated ${timeAgo(job.posted_at)}`, tooltip: `Last updated ${when} (the site gives no original posting date).` }
+  if (job.posted_at_kind === "relative_estimate") return { short: `~${timeAgo(job.posted_at)}`, tooltip: `Estimated from the site's "posted N days ago" text: around ${when}.` }
+  return { short: `posted ${timeAgo(job.posted_at)}`, tooltip: `Posted ${when}` }
+}

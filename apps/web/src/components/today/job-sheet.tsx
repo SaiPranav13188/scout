@@ -6,7 +6,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { FAMILY_LABEL, LOCATION_LABEL, SOURCE_LABEL, timeAgo, TRUST_META, ycShort } from "@/lib/format"
+import { FAMILY_LABEL, LOCATION_LABEL, postedLabel, SOURCE_LABEL, timeAgo, TRUST_META, ycShort } from "@/lib/format"
 import { useCorrectExperience, useJob } from "@/lib/queries"
 import type { Job } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -84,7 +84,7 @@ export function JobSheet({ jobId, preview, onClose, onOpened, onSkip, onApplied 
                     ["Pay", job.salary_text ?? "Not stated"],
                     ["Type", job.employment_type ?? "Not stated"],
                     ["Team", job.department ?? "Not stated"],
-                    ["Posted", job.posted_at ? timeAgo(job.posted_at) : `Seen ${timeAgo(job.first_seen_at)}`],
+                    ["Posted", postedLabel(job).short],
                     ["Source", SOURCE_LABEL[job.source] ?? job.source],
                   ].map(([k, v]) => (
                     <div key={k}>

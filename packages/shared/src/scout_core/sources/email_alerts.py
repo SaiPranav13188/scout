@@ -74,6 +74,14 @@ def parse_linkedin(msg: EmailMessage) -> list[NormalizedJob]:
         from scout_core.normalize import LocationBucket, classify_location
         if classify_location([searched.group(1).strip()]).bucket == LocationBucket.INDIA:
             country = "IN"
+    # LinkedIn's experience filter (f_E) is in the alert's "See all jobs" link. Codes 1 = Internship and
+    # 2 = Entry level; when the alert is limited to those, LinkedIn already screened for experience.
+    entry_level_alert = False
+    see_all = re.search(r"See all jobs on LinkedIn:\s*(\S+)", text)
+    if see_all:
+        from urllib.parse import parse_qs
+        codes = set(",".join(parse_qs(urlsplit(see_all.group(1)).query).get("f_E", [])).split(",")) - {""}
+        entry_level_alert = bool(codes) and codes <= {"1", "2"}
     jobs = []
     for block in re.split(r"\n[ \t]*-{10,}[ \t]*\n", text):
         m = re.search(r"View job:\s*https?://(?:www\.)?linkedin\.com/(?:comm/)?jobs/view/(\d+)", block)
@@ -89,11 +97,13 @@ def parse_linkedin(msg: EmailMessage) -> list[NormalizedJob]:
         mode = modes.get(job_id)
         jobs.append(NormalizedJob(
             source="linkedin_alert", source_job_id=job_id, company_name=company, title=title,
+            description_text="Entry level (from a LinkedIn alert filtered to entry level / internship)."
+            if entry_level_alert else None,
             location=location, locations=[location] if location else [],
             remote=True if mode == "Remote" else (False if mode == "On-site" else None),
-            posted_at=msg.received_at, posted_at_kind="alert_email",
+            posted_at=None, posted_at_kind="not_given",  # alert emails don't state the posting date
             apply_url=f"https://www.linkedin.com/jobs/view/{job_id}/",
-            extra={"workplace": mode, "gmail_id": msg.id, "country": country},
+            extra={"workplace": mode, "gmail_id": msg.id, "country": country, "entry_level_alert": entry_level_alert},
         ))
     return jobs
 
@@ -124,7 +134,8 @@ def parse_wellfound(msg: EmailMessage) -> list[NormalizedJob]:
         jobs.append(NormalizedJob(
             source="wellfound_alert", source_job_id=m.group("id"), company_name=company, title=title,
             description_text=desc, location=", ".join(locations) or None, locations=locations,
-            posted_at=msg.received_at, posted_at_kind="alert_email", apply_url=m.group("url"),
+            posted_at=None, posted_at_kind="not_given",  # alert emails don't state the posting date
+            apply_url=m.group("url"),
             salary=Salary(text=pay.split("•")[0].strip()) if pay else None,
             extra={"company_size": size, "gmail_id": msg.id},
         ))
@@ -155,6 +166,7 @@ def parse_internshala(msg: EmailMessage) -> list[NormalizedJob]:
         pay = next((p for p in parts[3:] if "₹" in p or "salary" in p.lower()), None)
         offer = next((p for p in parts if "post internship" in p.lower()), None)
         is_internship = kind == "internship/detail"
+        posted_at, posted_kind = posted_from_relative(parts, msg.received_at)
         job_id = (re.search(r"(\d{6,})$", slug) or re.search(r"(.+)", slug)).group(1)
         jobs.append(NormalizedJob(
             source="internshala_alert", source_job_id=job_id, company_name=company, title=title,
@@ -163,12 +175,32 @@ def parse_internshala(msg: EmailMessage) -> list[NormalizedJob]:
             location=location, locations=[location],
             remote=True if re.search(r"remote|work from home", location, re.IGNORECASE) else None,
             employment_type="Intern" if is_internship else "Full Time",
-            posted_at=msg.received_at, posted_at_kind="alert_email",
+            posted_at=posted_at, posted_at_kind=posted_kind,
             apply_url=_strip_query(f"https://internshala.com/{kind}/{slug}"),
             salary=Salary(text=pay) if pay else None,
             extra={"gmail_id": msg.id, "country": "IN"},  # Internshala lists jobs in India
         ))
     return jobs
+
+
+_REL = re.compile(r"^(just now|today|few hours ago|\d+ hours? ago|yesterday|\d+ days? ago|\d+ weeks? ago|"
+                  r"\d+ months? ago)$", re.IGNORECASE)
+
+
+def posted_from_relative(parts: list[str], received):
+    """Internshala cards say 'Today', 'Few hours ago', '3 days ago'. Estimate from the email time."""
+    from datetime import timedelta
+
+    text = next((p.lower() for p in parts if _REL.match(p.strip())), None)
+    if text is None:
+        return None, "not_given"
+    if text in ("just now", "today", "few hours ago") or "hour" in text:
+        return received, "relative_estimate"
+    if text == "yesterday":
+        return received - timedelta(days=1), "relative_estimate"
+    n = int(re.match(r"(\d+)", text).group(1))
+    days = n * (7 if "week" in text else 30 if "month" in text else 1)
+    return received - timedelta(days=days), "relative_estimate"
 
 
 # ------------------------------------------------------------------ Instahyre
@@ -201,7 +233,7 @@ def parse_instahyre(msg: EmailMessage) -> list[NormalizedJob]:
             source="instahyre_alert", source_job_id=m.group(1), company_name=company, title=title,
             description_text=desc, location=location, locations=[location] if location else [],
             remote=True if location and re.search(r"work from home|remote", location, re.IGNORECASE) else None,
-            posted_at=msg.received_at, posted_at_kind="alert_email",
+            posted_at=None, posted_at_kind="not_given",  # alert emails don't state the posting date
             apply_url=f"https://www.instahyre.com/job-{m.group(1)}-{m.group(2)}/",
             extra={"gmail_id": msg.id, "country": "IN"},  # Instahyre is an India-only job site
         ))

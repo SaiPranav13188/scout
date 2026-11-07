@@ -136,6 +136,15 @@ export function TodayView() {
             ? `${newCount} new ${newCount === 1 ? "role" : "roles"} since your last visit. Newest first.`
             : "You're caught up. New roles appear here as soon as they're found."}
         </p>
+        {!filters.include_unclear && (first?.facets.experience?.unclear ?? 0) > 0 && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Showing confirmed fresher / entry-level jobs only.{" "}
+            <button className="text-brand hover:underline" onClick={() => setFilters({ ...filters, include_unclear: true })}>
+              {first?.facets.experience?.unclear} more have unclear experience
+            </button>{" "}
+            (their job alert didn&apos;t say how much experience is needed).
+          </p>
+        )}
       </motion.div>
 
       <LabelProgress />

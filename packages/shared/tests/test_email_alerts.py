@@ -54,6 +54,8 @@ def test_linkedin_format():
     assert (a.title, a.company_name, a.location) == ("Example AI Engineer", "Examplecorp Labs", "Hyderabad")
     assert a.apply_url == "https://www.linkedin.com/jobs/view/1000000001/"  # tracking removed
     assert a.extra["workplace"] == "Hybrid" and a.source_job_id == "1000000001"
+    # The alert email doesn't say when the job was posted, so no posting time is invented.
+    assert a.posted_at is None and a.posted_at_kind == "not_given"
     # "Banjara Hills" isn't a known city, but the alert searched Hyderabad, so it's an India job.
     assert evaluate_job(b).location.bucket.value == "india"
 
@@ -98,7 +100,7 @@ def test_wellfound_application_confirmation_ignored():
 INTERNSHALA_HTML = """<html><body>
 <a href="https://et.internshala.com/CL0/https:%2F%2Finternshala.com%2Fjob%2Fdetail%2Ffresher-remote-example-developer-job-at-examplecorp1700000001%3Futm_source=x/1/abc">
  <span>Actively hiring</span><span>Example Developer</span><span>Examplecorp</span><span>Remote</span>
- <span>Immediately</span><span>₹3,00,000 - 4,00,000 /year</span><span>Today</span><span>Job</span><span>Apply now</span></a>
+ <span>Immediately</span><span>₹3,00,000 - 4,00,000 /year</span><span>3 days ago</span><span>Job</span><span>Apply now</span></a>
 <a href="https://et.internshala.com/CL0/https:%2F%2Finternshala.com%2Finternship%2Fdetail%2Fexample-analytics-internship-at-samplelabs1700000002/1/abc">
  <span>Example Analytics</span><span>Sample Labs</span><span>Pune</span><span>3 months</span>
  <span>₹ 10,000 /month</span><span>Job offer upto ₹ 4LPA post internship</span><span>Apply now</span></a>
@@ -114,6 +116,9 @@ def test_internshala_format():
     assert (job.title, job.company_name, job.source_job_id) == ("Example Developer", "Examplecorp", "1700000001")
     assert job.apply_url == "https://internshala.com/job/detail/fresher-remote-example-developer-job-at-examplecorp1700000001"
     assert intern.employment_type == "Intern"
+    # "3 days ago" on the card becomes an estimated posting time 3 days before the email.
+    assert job.posted_at_kind == "relative_estimate" and (NOW - job.posted_at).days == 3
+    assert intern.posted_at is None  # that card states no date
     assert evaluate_job(intern).keep  # job offer after the internship counts as conversion
 
 
@@ -170,3 +175,18 @@ def test_real_alert_emails(path):
         assert "?" not in j.apply_url  # no tracking parameters stored
         assert j.title not in ("Apply now", "Apply here")
     assert isinstance(text, str)
+
+
+def test_linkedin_entry_level_alert_is_trusted():
+    from scout_core.pipeline.evaluate import evaluate_job
+    filtered = LINKEDIN_TEXT + ("See all jobs on LinkedIn:  https://www.linkedin.com/comm/jobs/search-results/"
+                                "?keywords=ai%20engineer&geoId=1&f_E=1%2C2&f_TPR=r86400\n")
+    _, jobs = parse_alert(_msg("LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>", "x", text=filtered))
+    assert jobs[0].extra["entry_level_alert"] is True
+    v = evaluate_job(jobs[0]).fresher
+    assert v.experience_unclear is False and v.confidence.value == "high"
+    # An alert without the filter (or including Associate / Mid-Senior) stays "unclear".
+    for f_e in ("", "&f_E=2%2C3", "&f_E=4"):
+        other = LINKEDIN_TEXT + f"See all jobs on LinkedIn:  https://www.linkedin.com/comm/jobs/search-results/?keywords=x{f_e}\n"
+        _, js = parse_alert(_msg("LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>", "x", text=other))
+        assert evaluate_job(js[0]).fresher.experience_unclear is True

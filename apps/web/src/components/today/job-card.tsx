@@ -7,7 +7,7 @@ import { forwardRef, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { FAMILY_LABEL, SOURCE_LABEL, timeAgo, ycShort } from "@/lib/format"
+import { FAMILY_LABEL, postedLabel, SOURCE_LABEL, ycShort } from "@/lib/format"
 import type { Job } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -49,7 +49,6 @@ export const JobCard = forwardRef<HTMLElement, Props>(function JobCard(
   }
 
   const place = [job.location, ...(job.locations ?? []).slice(1, 3)].filter(Boolean).join(" · ") || "Location not stated"
-  const posted = job.posted_at ?? job.first_seen_at
 
   return (
     <motion.div layout className="relative" exit={{ opacity: 0, height: 0, marginBottom: 0, transition: { duration: 0.25 } }}>
@@ -131,14 +130,10 @@ export const JobCard = forwardRef<HTMLElement, Props>(function JobCard(
                 <TooltipTrigger asChild>
                   <span className="flex cursor-help items-center gap-1">
                     <Clock className="size-3.5" />
-                    {job.posted_at ? timeAgo(posted) : `seen ${timeAgo(job.first_seen_at)}`}
+                    {postedLabel(job).short}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>
-                  {job.posted_at
-                    ? `${job.posted_at_kind === "updated" ? "Last updated" : "Posted"} ${new Date(job.posted_at).toLocaleString("en-IN")}`
-                    : "The source didn't give a posting date; this is when Scout first saw it."}
-                </TooltipContent>
+                <TooltipContent className="max-w-xs">{postedLabel(job).tooltip}</TooltipContent>
               </Tooltip>
               {job.salary_text && (
                 <span className="flex items-center gap-1 text-foreground/80"><Banknote className="size-3.5" />{job.salary_text}</span>

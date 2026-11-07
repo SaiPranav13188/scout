@@ -35,6 +35,7 @@ async def list_jobs(
     posted_within_hours: int | None = Query(None, ge=1, le=24 * 60),
     min_relevance: int = Query(0, ge=0, le=100),
     all_roles: bool = False,
+    include_unclear: bool = False,
     status: str = Query("discovered"),
     sort: str = Query("newest", pattern="^(newest|relevance)$"),
     offset: int = Query(0, ge=0),
@@ -46,6 +47,9 @@ async def list_jobs(
     if not all_roles:
         stmt = stmt.where(Job.role_family != "unrelated", Job.relevance_score >= MIN_FEED_RELEVANCE)
     stmt = stmt.where(Job.trust_level != "scam_risk")
+    unclear_count_q = stmt.where(Job.experience_unclear.is_(True))
+    if not include_unclear:
+        stmt = stmt.where(Job.experience_unclear.is_(False))
     # Facets are computed before the user-selected facet filters so counts stay useful.
     base = stmt
     if q:
@@ -81,6 +85,8 @@ async def list_jobs(
     for name, col in (("source", sub.c.source), ("family", sub.c.role_family), ("location", sub.c.location_bucket)):
         facets[name] = {k: v for k, v in (await session.execute(
             select(col, func.count()).group_by(col))).all()}
+    facets["experience"] = {"unclear": int(await session.scalar(
+        select(func.count()).select_from(unclear_count_q.subquery())) or 0)}
 
     last_visit = _parse_dt(await get_setting(session, "last_visit_at"))
     ids = [job.id for job, _ in rows]

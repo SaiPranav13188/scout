@@ -30,10 +30,15 @@ def feed_query() -> Select:
 MIN_FEED_RELEVANCE = 30
 
 
-def visible_feed_query() -> Select:
-    """What the Today page shows by default: feed jobs minus scam risk and off-target roles."""
-    return feed_query().where(Job.trust_level != "scam_risk", Job.role_family != "unrelated",
-                              Job.relevance_score >= MIN_FEED_RELEVANCE)
+def visible_feed_query(include_unclear: bool = False) -> Select:
+    """What the Today page, Telegram and stats show by default: feed jobs minus scam risk and
+    off-target roles, and only jobs confirmed as entry-level. Jobs whose experience is unclear
+    (e.g. title-only alert emails) are shown only when asked for."""
+    q = feed_query().where(Job.trust_level != "scam_risk", Job.role_family != "unrelated",
+                           Job.relevance_score >= MIN_FEED_RELEVANCE)
+    if not include_unclear:
+        q = q.where(Job.experience_unclear.is_(False))
+    return q
 
 
 async def latest_scores(session: AsyncSession, ids: list) -> dict:

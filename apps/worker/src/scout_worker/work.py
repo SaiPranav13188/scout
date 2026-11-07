@@ -506,9 +506,9 @@ async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
             return None
         cfg = await get_setting(session, "matching")
         scored = select(JobScore.job_id).where(JobScore.prompt_version == PROMPT_VERSION)
-        jobs = (await session.execute(visible_feed_query().where(
+        jobs = (await session.execute(visible_feed_query(include_unclear=True).where(
             Job.status == ApplicationStatus.DISCOVERED, Job.id.not_in(scored))
-            .order_by(Job.first_seen_at.desc()).limit(limit)
+            .order_by(Job.experience_unclear, Job.first_seen_at.desc()).limit(limit)
             .with_only_columns(Job.id, Job.title, Job.company_name, Job.location, Job.description))).all()
         return master.parsed, cfg, [tuple(j) for j in jobs]
 
