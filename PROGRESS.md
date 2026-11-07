@@ -197,3 +197,7 @@ LinkedIn test pages (`apps/extension/test/browser_test.py`): all pass; the unpac
 | Settings, evening summary, error alerts (one per worker per hour), restart-safe slots, no duplicate notifications | done earlier (Phase 1-2), tested |
 | Langfuse tracing | not done: needs Langfuse keys (docs/SETUP.md); LLM calls, tokens and errors are recorded in agent_runs meanwhile |
 | Load / worker-crash tests (spec §13.8) | partly: retry-the-same-slot and failed-send-retry tests exist; no Redis restart test (production runs without Redis) |
+
+## Phase 7 (AWS / Terraform): removed
+
+Removed from the plan on 2026-11-07 at your request: you already have a project deployed on AWS, and Scout runs fully in the cloud for free (GitHub Actions, Render, Vercel, Supabase).
