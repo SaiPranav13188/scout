@@ -3,7 +3,7 @@
 import { devAuthToken, getSupabase } from "./supabase"
 import type {
   AgentRun, CompanyRow, Contact, FactCheck, JobDetail, JobFilters, JobLabel, JobPage, JobStatus, LabelSummary,
-  ResumeData, ResumeOverview, ResumeVersion, SavedSearch, Stats,
+  ResumeData, ResumeOverview, ResumeVersion, SavedSearch, Stats, TailoredResume,
 } from "./types"
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
@@ -12,6 +12,28 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
   }
+}
+
+async function authToken(): Promise<string> {
+  const token = devAuthToken() ?? (await getSupabase().auth.getSession()).data.session?.access_token
+  if (!token) throw new ApiError(401, "Not signed in")
+  return token
+}
+
+/** Download a file from the API (needs the auth header, so a plain link won't do). */
+export async function downloadFile(path: string, fallbackName: string) {
+  const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${await authToken()}` } })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, body?.detail ?? res.statusText)
+  }
+  const name = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? fallbackName
+  const url = URL.createObjectURL(await res.blob())
+  const a = Object.assign(document.createElement("a"), { href: url, download: name })
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -77,6 +99,9 @@ export const api = {
   saveResume: (base_version: number, data: ResumeData, contact: Contact) =>
     request<ResumeOverview>("/api/resume", { method: "PUT", body: JSON.stringify({ base_version, data, contact }) }),
   activateResume: (v: number) => request<ResumeOverview>(`/api/resume/versions/${v}/activate`, { method: "POST" }),
+  tailoredForJob: (jobId: string) => request<TailoredResume[]>(`/api/jobs/${jobId}/resumes`),
+  tailorForJob: (jobId: string) => request<TailoredResume>(`/api/jobs/${jobId}/resume`, { method: "POST" }),
+  tailoredAll: () => request<TailoredResume[]>("/api/resumes"),
   uploadResume: (file: File) => {
     const body = new FormData()
     body.append("file", file)

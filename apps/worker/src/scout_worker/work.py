@@ -527,6 +527,39 @@ async def check_unclear_experience(llm, limit: int = 15) -> dict:
     return counts
 
 
+async def resumes_for_top_matches(llm, limit: int = 3) -> dict:
+    """Spec §6.5: a tailored resume is ready for every "Top match" (85+) in my feed."""
+    from scout_core.db.models import JobScore, ResumeGenerated
+    from scout_core.llm import LLMError
+    from scout_core.matching import PROMPT_VERSION
+    from scout_core.settings_store import get_setting as _gs
+    from scout_core.tailor_service import NoMasterResume, generate
+
+    async def load(s):
+        top = int(((await _gs(s, "matching")).get("bands") or {}).get("top", 85))
+        latest = (select(JobScore.job_id, JobScore.score).where(JobScore.prompt_version == PROMPT_VERSION)
+                  .ext(distinct_on(JobScore.job_id)).order_by(JobScore.job_id, JobScore.created_at.desc()).subquery())
+        has_resume = select(ResumeGenerated.job_id)
+        return (await s.scalars(visible_feed_query().join(latest, latest.c.job_id == Job.id).where(
+            Job.status == ApplicationStatus.DISCOVERED, latest.c.score >= top, Job.id.not_in(has_resume))
+            .order_by(latest.c.score.desc()).limit(limit).with_only_columns(Job.id))).all()
+
+    counts = {"generated": 0, "fallback": 0, "errors": 0}
+    for job_id in await _with_db_retry(load):
+        try:
+            async with worker_session() as s:
+                row = await generate(s, llm, await s.get(Job, job_id), actor="worker")
+                await s.commit()
+            counts["generated" if (row.content or {}).get("tailored") else "fallback"] += 1
+        except NoMasterResume:
+            break
+        except LLMError as exc:
+            counts["errors"] += 1
+            if "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc):
+                break
+    return counts
+
+
 async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
     """Score feed jobs against the active master resume: unscored jobs first, then jobs whose
     score was computed from an older resume or older target roles (different profile fingerprint).
@@ -600,6 +633,8 @@ async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
 
             await _with_db_retry(save)
             run.inc("scored")
+        for k, v in (await resumes_for_top_matches(llm)).items():
+            run.inc(f"resumes_{k}", v)
         run.inc("llm_calls", llm.usage.calls)
         run.inc("llm_input_tokens", llm.usage.input_tokens)
         run.inc("llm_output_tokens", llm.usage.output_tokens)
@@ -680,6 +715,45 @@ async def resume_backfill(pdf_path: str, apply: bool = False) -> dict:
             await session.commit()
         out["applied"] = apply
         return out
+
+
+async def tailor_eval(n: int = 6) -> dict:
+    """Spec §13.5-6 on real data: tailor my real resume for n real AI jobs (nothing is stored).
+
+    Reports how often Gemini's first draft was rejected by the validator, fallbacks, unsupported
+    claims in the final output (must be 0), page count and text extraction.
+    """
+    from scout_core.llm import Gemini
+    from scout_core.render_resume import ats_text_check, fit_one_page
+    from scout_core.resume import Contact
+    from scout_core.resume_store import active_resume, resume_data
+    from scout_core.tailor import tailor, validate
+
+    async with worker_session() as s:
+        master_row = await active_resume(s)
+        jobs = (await s.scalars(select(Job).where(Job.role_family == "applied_ai", func.length(Job.description) > 1200)
+                                .order_by(Job.first_seen_at.desc()).limit(n))).all()
+    parsed = master_row.parsed or {}
+    master, contact = resume_data(parsed), Contact.model_validate(parsed.get("contact") or {})
+    llm = Gemini.from_settings()
+    rows = []
+    for job in jobs:
+        r = await tailor(llm, master=master, contact=contact, source_text=parsed.get("source_text"), title=job.title,
+                         company=job.company_name, description=job.description,
+                         job_terms=[*(job.required_skills or []), *(job.preferred_skills or [])])
+        doc, pdf, dropped = fit_one_page(r["content"])
+        final = validate(doc, master, parsed.get("source_text"))
+        from scout_core.render_resume import page_count
+        rows.append({"job": f"{job.title} @ {job.company_name}"[:70], "tailored": r["tailored"], "attempts": r["attempts"],
+                     "final_unsupported": len(final["unsupported"]), "pages": page_count(pdf),
+                     "ats_ok": ats_text_check(pdf, doc)["ok"], "dropped_to_fit": len(dropped),
+                     "rejected_claims": (r["validation"].get("fallback_reason") or [])[:3]})
+    return {"jobs": len(rows), "tailored": sum(x["tailored"] for x in rows),
+            "first_try": sum(x["attempts"] == 1 and x["tailored"] for x in rows),
+            "fallbacks": sum(not x["tailored"] for x in rows),
+            "final_unsupported_claims": sum(x["final_unsupported"] for x in rows),
+            "one_page": sum(x["pages"] == 1 for x in rows), "ats_ok": sum(x["ats_ok"] for x in rows),
+            "llm_calls": llm.usage.calls, "rows": rows}
 
 
 async def match_eval(maybe_counts_as_apply: bool = False):

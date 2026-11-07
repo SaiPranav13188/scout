@@ -102,7 +102,23 @@ text (contact details redacted). Real resume v1: 0 unsupported items.
 Error found and fixed: numbers matched as substrings, so an invented "3" passed because "8.3" was in the
 file, and "20" passed because of "2022". Numbers now match whole (tested).
 
-## 7-9. Later phases
+## 7. Tailored resumes: factual accuracy, format, ATS (spec §13.5-6, Phase 4)
+
+**Validator catches planted fakes** (unit tests, `test_tailor.py`): invented skill (Kubernetes), inflated
+number (6 → 12 agents), invented metric (40% latency), tool not in my resume (LangGraph), job keyword not
+true for me, invented project, rewritten achievement: **7/7 caught**. A rejected draft is retried once with
+the errors, then the untailored master resume is used (both tested).
+
+**Real data** (`uv run python -m scout_worker.cli tailor-eval 6`, 2026-11-07, my real resume v1, 6 real AI
+postings from Observe.AI, HighRadius, Sarvam AI): 6/6 tailored on the first try, **0 unsupported claims** in
+the final documents, **6/6 one page**, **6/6 text extraction** (name, email, section headings and project
+names read back from the PDF). 6 Gemini calls.
+
+Caveat: the validator checks tools, skills, numbers, names and copied sections. It cannot judge whether a
+lightly reworded sentence changes meaning without adding any of those; that still relies on the prompt's
+rules and on my reading of the PDF.
+
+## 8-9. Later phases
 
 Resume factual accuracy, resume format, alert parsers, reliability under worker/Redis crashes, and
 prompt injection are measured in Phases 2-5. Phase 1 already tests: digests are never sent twice (including

@@ -17,6 +17,7 @@ import { keys } from "@/lib/queries"
 import type { Contact, FactCheck, ResumeData, ResumeOverview, ResumeVersion } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+import { DownloadButtons, ResumeStatus } from "./tailored-panel"
 import {
   ChipList, describeFlag, Field, ItemCard, LineList, move, readFlags, RowActions, SectionCard, textFlagged, TextField,
 } from "./fields"
@@ -146,6 +147,7 @@ export function ResumeManager() {
           <aside aria-label="Resume status" className="space-y-4 lg:sticky lg:top-20 lg:self-start">
             <FactCheckCard check={check} canCheck={active.can_fact_check} dirty={dirty} />
             <ScoringCard scoring={overview!.scoring} />
+            <TailoredCard />
             <VersionsCard overview={overview!} busy={busy} onActivate={(v) => {
               if (dirty && !confirm("You have unsaved changes. Switch versions and discard them?")) return
               activate.mutate(v)
@@ -262,6 +264,31 @@ function ScoringCard({ scoring }: { scoring: ResumeOverview["scoring"] }) {
             <p className="mt-2 text-xs text-muted-foreground">Scored a few at a time on each run, within Gemini&apos;s free daily limit.</p>
           )}
         </>
+      )}
+    </div>
+  )
+}
+
+function TailoredCard() {
+  const { data } = useQuery({ queryKey: ["tailored-all"], queryFn: api.tailoredAll })
+  return (
+    <div className="rounded-2xl border bg-card/60 p-4">
+      <h3 className="flex items-center gap-2 text-sm font-medium"><FileUp className="size-4 text-brand" /> Tailored resumes</h3>
+      {!data?.length ? (
+        <p className="mt-2 text-xs text-muted-foreground">None yet. Open a job and choose &quot;Make tailored resume&quot;; top matches get one automatically.</p>
+      ) : (
+        <ol className="mt-3 space-y-2">
+          {data.slice(0, 12).map((r) => (
+            <li key={r.id} className="space-y-1.5 rounded-lg border bg-background/40 p-2.5 text-xs">
+              <p className="font-medium">{r.job_title} <span className="font-normal text-muted-foreground">· {r.company}</span></p>
+              <ResumeStatus r={r} />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">{timeAgo(r.created_at)}</span>
+                <DownloadButtons r={r} size="xs" />
+              </div>
+            </li>
+          ))}
+        </ol>
       )}
     </div>
   )

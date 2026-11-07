@@ -15,6 +15,7 @@
   uv run python -m scout_worker.cli add-india-boards          # India hiring companies' public boards
   uv run python -m scout_worker.cli seniority-check 40       # Gemini reads "experience unclear" jobs
   uv run python -m scout_worker.cli recheck-feed [--apply]  # re-run the fresher filter on feed jobs
+  uv run python -m scout_worker.cli tailor-eval 6              # Phase 4 eval on real jobs (stores nothing)
   uv run python -m scout_worker.cli match-eval [--maybe-is-apply]  # match score vs my labels (read-only)
 """
 
@@ -151,6 +152,8 @@ def main() -> None:
             Gemini.from_settings(), limit=int(args[0]) if args else 15)), indent=2))
     elif cmd == "recheck-feed":
         print(json.dumps(asyncio.run(work.recheck_feed(apply="--apply" in args)), indent=2))
+    elif cmd == "tailor-eval":
+        print(json.dumps(asyncio.run(work.tailor_eval(int(args[0]) if args else 6)), indent=2))
     elif cmd == "match-eval":
         from scout_core.match_eval import to_markdown
         print(to_markdown(asyncio.run(work.match_eval("--maybe-is-apply" in args))))

@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowUpRight, Building2, Check, CircleCheck, CircleX, ExternalLink, Link2, ShieldCheck, X } from "lucide-react"
+import { ArrowUpRight, Building2, Check, CircleCheck, CircleX, ExternalLink, FileText, Link2, ShieldCheck, X } from "lucide-react"
 import { motion } from "motion/react"
 import { toast } from "sonner"
 
@@ -12,6 +12,8 @@ import type { Job } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 import { CompanyMark, FitMeter, FresherBadge, TrustBadge } from "./badges"
+import { TailoredPanel } from "@/components/resume/tailored-panel"
+
 import { LabelButtons } from "./label-buttons"
 import { BreakdownBar, MatchRing } from "./match-ring"
 
@@ -126,6 +128,10 @@ export function JobSheet({ jobId, preview, onClose, onOpened, onSkip, onApplied 
                   </Section>
                 )
               })()}
+
+              <Section title="Tailored resume" icon={FileText} delay={0.025}>
+                <TailoredPanel jobId={job.id} />
+              </Section>
 
               <Section title="Your call" icon={CircleCheck} delay={0.03}>
                 <p className="text-sm text-muted-foreground">Would you apply? Your answers teach Scout what fits you.</p>

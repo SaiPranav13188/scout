@@ -242,3 +242,22 @@ export interface ResumeOverview {
   scoring: { current: number; outdated: number; unscored: number }
   saved?: boolean
 }
+
+// ------------------------------------------------------------------ tailored resumes (routes/tailored.py)
+
+export interface TailoredResume {
+  id: string
+  job_id: string
+  created_at: string
+  tailored: boolean
+  passed: boolean
+  unsupported: string[]
+  fallback_reason: string[]
+  pages: number | null
+  ats_ok: boolean | null
+  dropped_to_fit: string[]
+  emphasis: string[]
+  master_version: number | null
+  job_title?: string
+  company?: string
+}

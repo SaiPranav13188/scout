@@ -51,6 +51,15 @@ class TelegramClient:
             payload["reply_markup"] = {"inline_keyboard": buttons}
         return await self.call("sendMessage", payload)
 
+    async def send_document(self, chat_id: str, filename: str, data: bytes, caption: str = "") -> Any:
+        r = await self._client.post(API.format(token=self._token, method="sendDocument"),
+                                    data={"chat_id": chat_id, "caption": caption[:1000], "parse_mode": "HTML"},
+                                    files={"document": (filename, data, "application/pdf")}, timeout=60)
+        data_ = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if not data_.get("ok"):
+            raise TelegramError(f"sendDocument: {data_.get('error_code')} {data_.get('description')}")
+        return data_["result"]
+
     async def answer_callback(self, callback_id: str, text: str) -> None:
         await self.call("answerCallbackQuery", {"callback_query_id": callback_id, "text": text[:200]})
 
@@ -101,6 +110,8 @@ def format_job(item: DigestItem, now: datetime | None = None) -> tuple[str, list
         lines.append(f"<i>{e(item.why)}</i>")
     buttons = [[
         {"text": "Open job", "url": item.apply_url},
+        {"text": "Resume", "callback_data": f"resume:{item.job_id}"},
+    ], [
         {"text": "Skip", "callback_data": f"skip:{item.job_id}"},
         {"text": "Applied", "callback_data": f"applied:{item.job_id}"},
     ]]

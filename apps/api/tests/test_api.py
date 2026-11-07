@@ -510,3 +510,68 @@ async def test_feed_shows_ai_field_roles_only(client, session):
     assert "Backend Developer" not in titles and "AI Engineer" in titles
     stats = (await client.get("/api/stats", headers=_auth())).json()
     assert stats["open_in_feed"] == len(titles)
+
+
+# ------------------------------------------------------------------ tailored resumes
+
+class _TailorLLM:
+    def __init__(self):
+        from scout_core.llm import Usage
+        self.usage = Usage()
+
+    async def json(self, schema, prompt, *, purpose, temperature=0.1):
+        from scout_core.tailor import BulletOut, ProjectOut, SkillGroupOut
+        self.usage.by_call.append({"model": "fake"})
+        return schema(skill_groups=[SkillGroupOut(category="Core", items=["Python", "FastAPI"])],
+                      projects=[ProjectOut(name="Nagrik", bullets=[BulletOut(
+                          from_bullet=0, text="Built 6 agents with a BullMQ queue; cut triage time 40%")])],
+                      emphasis=["agents first"])
+
+
+async def test_tailored_resume_generate_list_download(client, session, monkeypatch):
+    from scout_api.routes import tailored
+    await _seed(session)
+    job_id = (await client.get("/api/jobs", headers=_auth())).json()["items"][0]["id"]
+    assert (await client.post(f"/api/jobs/{job_id}/resume", headers=_auth())).status_code == 409  # no master yet
+    await _seed_resume(session)
+    monkeypatch.setattr(tailored.Gemini, "from_settings", classmethod(lambda cls: _TailorLLM()))
+    r = await client.post(f"/api/jobs/{job_id}/resume", headers=_auth())
+    assert r.status_code == 200, r.text
+    made = r.json()
+    assert made["tailored"] and made["passed"] and made["pages"] == 1 and made["unsupported"] == []
+    assert made["emphasis"] == ["agents first"] and made["master_version"] == 1
+    again = (await client.post(f"/api/jobs/{job_id}/resume", headers=_auth())).json()
+    versions = (await client.get(f"/api/jobs/{job_id}/resumes", headers=_auth())).json()
+    assert [v["id"] for v in versions] == [again["id"], made["id"]]  # every generation is a new version
+    assert (await client.get("/api/resumes", headers=_auth())).json()[0]["job_title"]
+    pdf = await client.get(f"/api/resumes/{made['id']}/file", headers=_auth())
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    assert "Jane-Example" in pdf.headers["content-disposition"]
+    docx = await client.get(f"/api/resumes/{made['id']}/file", params={"format": "docx"}, headers=_auth())
+    assert docx.status_code == 200 and docx.content[:2] == b"PK"
+    assert (await client.get(f"/api/resumes/{made['id']}/file")).status_code == 401  # owner only
+
+
+@respx.mock
+async def test_telegram_resume_button_sends_pdf(client, session, monkeypatch):
+    from scout_core import llm as llm_mod
+    await _seed(session)
+    await _seed_resume(session)
+    monkeypatch.setattr(llm_mod.Gemini, "from_settings", classmethod(lambda cls: _TailorLLM()))
+    answered = respx.post(url__regex=r".*/answerCallbackQuery").mock(return_value=httpx.Response(200, json={"ok": True, "result": True}))
+    doc = respx.post(url__regex=r".*/sendDocument").mock(return_value=httpx.Response(200, json={"ok": True, "result": {}}))
+    job = await session.scalar(select(Job).where(Job.title == "AI Engineer"))
+    ok = {"X-Telegram-Bot-Api-Secret-Token": "hook-secret"}
+    cb = {"callback_query": {"id": "c9", "data": f"resume:{job.id}", "message": {"chat": {"id": 42}}}}
+    assert (await client.post("/telegram/webhook", json=cb, headers=ok)).status_code == 200
+    assert answered.call_count == 1 and doc.call_count == 1
+    body = doc.calls[0].request.content
+    assert b"%PDF" in body and b"tailored" in body
+    # Second tap reuses the stored version instead of calling Gemini again.
+    monkeypatch.setattr(llm_mod.Gemini, "from_settings", classmethod(lambda cls: (_ for _ in ()).throw(AssertionError("no"))))
+    await client.post("/telegram/webhook", json=cb, headers=ok)
+    assert doc.call_count == 2
+    # A stranger's chat can't request my resume.
+    stranger = {"callback_query": {"id": "c10", "data": f"resume:{job.id}", "message": {"chat": {"id": 7}}}}
+    await client.post("/telegram/webhook", json=stranger, headers=ok)
+    assert doc.call_count == 2

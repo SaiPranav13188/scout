@@ -55,6 +55,9 @@ async def handle_update(session: AsyncSession, tg: TelegramClient, update: dict,
             job_id = uuid.UUID(raw_id)
         except ValueError:
             return
+        if action == "resume":
+            await send_resume(session, tg, cb["id"], job_id, owner_chat)
+            return
         if status is None:
             return
         try:
@@ -86,3 +89,33 @@ async def handle_update(session: AsyncSession, tg: TelegramClient, update: dict,
         await tg.send(owner_chat, "Paused. Send /resume to start again." if command == "/pause" else "Resumed.")
     else:
         await tg.send(owner_chat, HELP)
+
+
+async def send_resume(session: AsyncSession, tg: TelegramClient, callback_id: str, job_id: uuid.UUID,
+                      chat: str) -> None:
+    """The "Resume" button: send this job's tailored resume (made now if there isn't one yet)."""
+    import html
+
+    from scout_core.db.models import Job
+    from scout_core.llm import Gemini, LLMError, LLMNotConfigured
+    from scout_core.render_resume import render_pdf
+    from scout_core.tailor_service import NoMasterResume, file_name, generate, latest_for_job
+
+    job = await session.get(Job, job_id)
+    if job is None:
+        await tg.answer_callback(callback_id, "That job no longer exists.")
+        return
+    row = await latest_for_job(session, job_id)
+    await tg.answer_callback(callback_id, "Sending your resume…" if row else "Tailoring your resume (about 20 s)…")
+    if row is None:
+        try:
+            row = await generate(session, Gemini.from_settings(), job, actor="telegram")
+            await session.commit()
+        except (NoMasterResume, LLMNotConfigured, LLMError) as exc:
+            await tg.send(chat, f"Couldn't make a resume for {html.escape(job.title)}: {html.escape(str(exc)[:200])}")
+            return
+    v = row.validation_result or {}
+    status = ("✅ tailored, every claim checked against your master resume" if (row.content or {}).get("tailored")
+              else "↩️ untailored master resume (tailoring didn't pass the fact check)")
+    caption = f"<b>{html.escape(job.title)}</b> · {html.escape(job.company_name)}\n{status} · {v.get('pages', '?')} page"
+    await tg.send_document(chat, file_name(row, job, "pdf"), render_pdf((row.content or {}).get("document") or {}), caption)

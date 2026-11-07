@@ -157,6 +157,20 @@ Seven such searches are now on the Saved searches page (LinkedIn and Naukri, Ind
    queue." as a tool), and save once.
 5. Label ~40 jobs (apply / maybe / no), then `uv run python -m scout_worker.cli match-eval`.
 
-## Phase 4: Tailoring + validation (not started)
+## Phase 4: Tailoring + validation (done 2026-11-07)
+
+| Item | Status |
+|---|---|
+| `tailor_resume`: Gemini may only reorder skills/projects, choose up to 4 bullets each, lightly reword | done (`scout_core/tailor.py`) |
+| `validate_resume` (plain code): skills, project/role names, tools in bullets, numbers, achievements, certifications must be in the master data; job keywords that aren't true for me fail it | done; 7 planted-fake-claim tests |
+| Retry once with the validator's errors, then fall back to the untailored master resume | done, tested |
+| PDF (ATS-safe, single column, standard fonts, plain-text links) + DOCX; one-page fitting drops least important lines | done (`render_resume.py`) |
+| Versioning: every generation is a new `resumes_generated` row; files rendered from the stored version | done |
+| Dashboard: "Tailored resume" in each job (make / PDF / DOCX / fact-check result); history on the Resume page | done |
+| Automatic for Top matches (85+) after scoring, 3 per run | done |
+| Telegram "Resume" button sends the PDF (made on the spot if needed) | done, tested |
+| Eval on real data (`cli tailor-eval`) | 6 real AI jobs: 6 tailored first try, 0 unsupported claims, 6/6 one page, 6/6 text extraction OK |
+
+## Phase 4: Tailoring + validation (spec heading kept for reference)
 ## Phase 4b: Autofill Chrome extension (added by you on 2026-11-06; not started)
 ## Phase 5: Tracker, follow-ups, health, polish (not started)
