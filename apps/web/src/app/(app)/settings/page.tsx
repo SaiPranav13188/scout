@@ -1,7 +1,7 @@
 "use client"
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bell, Clock, Filter, Pause, Plug } from "lucide-react"
+import { Bell, Clock, Filter, Gauge, Pause, Plug } from "lucide-react"
 import { motion } from "motion/react"
 import { toast } from "sonner"
 
@@ -22,6 +22,7 @@ type Settings = {
   sources: Record<string, boolean>
   fresher_rules: { max_experience_years: number; include_internships: boolean } & Record<string, unknown>
   preferences: { mandatory: Record<string, boolean> } & Record<string, unknown>
+  matching: { jobs_per_run: number; bands: { top: number; good: number; stretch: number } } & Record<string, unknown>
   paused: boolean
 }
 
@@ -153,6 +154,34 @@ export default function SettingsPage() {
                 </span>
               ))}
             </div>
+          </Row>
+          <Row label="Follow-up reminder (days after applying)" hint="Set when you mark a job applied. 0 turns reminders off.">
+            <Input type="number" min={0} max={60} className="h-8 w-20 text-right" defaultValue={Number(data.notifications.follow_up_days ?? 7)}
+              onBlur={(e) => { const v = Number(e.target.value); if (v >= 0 && v <= 60 && v !== data.notifications.follow_up_days) set("notifications", { ...data.notifications, follow_up_days: v }) }} />
+          </Row>
+        </Card>
+
+        <Card icon={Gauge} title="Match score" description="How the 0-100 match with your resume is grouped. Top matches get a tailored resume automatically.">
+          {(["top", "good", "stretch"] as const).map((band) => (
+            <Row key={band} label={{ top: "Top match from", good: "Good match from", stretch: "Stretch from" }[band]}
+              hint={{ top: "Tailored resume made automatically.", good: "Shown in the feed; resume on request.", stretch: "Shown with reasons. Below this: low match." }[band]}>
+              <Input type="number" min={1} max={100} className="h-8 w-20 text-right" defaultValue={data.matching.bands[band]}
+                onBlur={(e) => {
+                  const v = Math.round(Number(e.target.value))
+                  const next = { ...data.matching.bands, [band]: v }
+                  if (v === data.matching.bands[band]) return
+                  if (!(next.top > next.good && next.good > next.stretch && next.stretch >= 1 && next.top <= 100)) {
+                    toast.error("Not saved", { description: "Keep Top > Good > Stretch, between 1 and 100." })
+                    e.target.value = String(data.matching.bands[band])
+                    return
+                  }
+                  set("matching", { ...data.matching, bands: next })
+                }} />
+            </Row>
+          ))}
+          <Row label="Jobs scored per run" hint="About 6 runs an hour. Gemini's free tier allows a limited number of calls a day.">
+            <Input type="number" min={1} max={50} className="h-8 w-20 text-right" defaultValue={data.matching.jobs_per_run}
+              onBlur={(e) => { const v = Number(e.target.value); if (v >= 1 && v <= 50 && v !== data.matching.jobs_per_run) set("matching", { ...data.matching, jobs_per_run: v }) }} />
           </Row>
         </Card>
       </motion.div>

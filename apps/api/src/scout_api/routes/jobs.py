@@ -95,7 +95,8 @@ async def list_jobs(
     ids = [job.id for job, _ in rows]
     labels = dict((await session.execute(select(JobLabel.job_id, JobLabel.label).where(JobLabel.job_id.in_(ids)))).all()) if ids else {}
     scores = await _scores(session, ids)
-    items = [job_out(job, company, last_visit, label=labels.get(job.id), score=scores.get(job.id))
+    bands = (await get_setting(session, "matching")).get("bands")
+    items = [job_out(job, company, last_visit, label=labels.get(job.id), score=scores.get(job.id), bands=bands)
              for job, company in rows]
     next_offset = offset + limit if offset + limit < (total or 0) else None
     return JobPage(items=items, total=int(total or 0), next_offset=next_offset, facets=facets)
@@ -117,7 +118,9 @@ async def get_job(job_id: UUID, session: Annotated[AsyncSession, Depends(db)]):
     company = await session.get(Company, job.company_id) if job.company_id else None
     last_visit = _parse_dt(await get_setting(session, "last_visit_at"))
     label = await session.scalar(select(JobLabel.label).where(JobLabel.job_id == job_id))
-    return job_out(job, company, last_visit, detail=True, label=label, score=(await _scores(session, [job_id])).get(job_id))
+    bands = (await get_setting(session, "matching")).get("bands")
+    return job_out(job, company, last_visit, detail=True, label=label, score=(await _scores(session, [job_id])).get(job_id),
+                   bands=bands)
 
 
 @router.post("/{job_id}/status", response_model=JobDetail)

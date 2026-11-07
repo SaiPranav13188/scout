@@ -88,10 +88,58 @@ def extract_pdf_bytes(data: bytes) -> str:
     return text + ("\n" + "\n".join(links) if links else "")
 
 
+MAX_DOCX_UNPACKED = 25 * 1024 * 1024  # a one-page resume unpacks to well under 1 MB
+
+
+def extract_docx_bytes(data: bytes) -> str:
+    """Text and hyperlinks from a Word resume. Files with macros are refused (spec §12)."""
+    import zipfile
+
+    if not data.startswith(b"PK"):
+        raise ResumeFileError("This isn't a Word (.docx) file.")
+    try:
+        z = zipfile.ZipFile(io.BytesIO(data))
+        names = [i.filename.lower() for i in z.infolist()]
+        if sum(i.file_size for i in z.infolist()) > MAX_DOCX_UNPACKED:
+            raise ResumeFileError("The Word file is unusually large inside; please export it as a PDF instead.")
+        content_types = z.read("[Content_Types].xml").decode("utf-8", "ignore").lower()
+    except (zipfile.BadZipFile, KeyError) as exc:
+        raise ResumeFileError("The Word file couldn't be read. It may be damaged.") from exc
+    if any(n.endswith("vbaproject.bin") or (n.endswith(".bin") and "vba" in n) for n in names) or "macroenabled" in content_types:
+        raise ResumeFileError("This Word file contains macros, so it was refused. Save it as a normal .docx or a PDF.")
+    if "word/document.xml" not in names:
+        raise ResumeFileError("This isn't a Word document.")
+    try:
+        from docx import Document
+
+        doc = Document(io.BytesIO(data))
+        parts = [para.text for para in doc.paragraphs]
+        for table in doc.tables:
+            for row in table.rows:
+                parts.append(" | ".join(cell.text for cell in row.cells))
+        links = [r.target_ref for r in doc.part.rels.values() if r.is_external and "hyperlink" in r.reltype]
+    except Exception as exc:  # python-docx raises many types on odd files
+        raise ResumeFileError("The Word file couldn't be read. Please export it as a PDF instead.") from exc
+    text = "\n".join(x for x in parts if x and x.strip())
+    if len(re.sub(r"\s+", "", text)) < 200:
+        raise ResumeFileError("Almost no text found in the Word file.")
+    return text + ("\n" + "\n".join(links) if links else "")
+
+
+def extract_resume_bytes(data: bytes, filename: str = "") -> str:
+    if data.startswith(b"%PDF"):
+        return extract_pdf_bytes(data)
+    if filename.lower().endswith(".docm"):
+        raise ResumeFileError("Macro-enabled Word files (.docm) are refused. Save it as .docx or PDF.")
+    if data.startswith(b"PK"):
+        return extract_docx_bytes(data)
+    raise ResumeFileError("Upload a PDF or a Word (.docx) file.")
+
+
 def extract_text(path: Path) -> str:
-    if path.suffix.lower() == ".pdf":
-        return extract_pdf_bytes(path.read_bytes())
-    raise ResumeFileError(f"unsupported resume format: {path.suffix} (PDF supported; DOCX coming)")
+    if path.suffix.lower() in (".pdf", ".docx", ".docm"):
+        return extract_resume_bytes(path.read_bytes(), path.name)
+    raise ResumeFileError(f"unsupported resume format: {path.suffix} (PDF or DOCX)")
 
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")

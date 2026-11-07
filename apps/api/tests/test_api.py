@@ -432,7 +432,7 @@ async def test_resume_upload(client, session, monkeypatch):
 
     not_pdf = await client.post("/api/resume/upload", files={"file": ("cv.pdf", b"hello", "application/pdf")},
                                 headers=_auth())
-    assert not_pdf.status_code == 422 and "isn't a PDF" in not_pdf.json()["detail"]
+    assert not_pdf.status_code == 422 and "PDF or a Word" in not_pdf.json()["detail"]
     empty = await client.post("/api/resume/upload", files={"file": ("cv.pdf", _pdf(["Hi"]), "application/pdf")},
                               headers=_auth())
     assert empty.status_code == 422 and "scanned" in empty.json()["detail"]
@@ -635,3 +635,71 @@ async def test_autofill_profile_export(client, session):
     assert p["linkedin"] == "https://www.linkedin.com/in/jane" and p["github"] == "https://github.com/jane"
     assert p["portfolio"] == "https://jane.dev" and p["graduation_year"] == "2026" and p["school"].startswith("Example")
     assert not {"work_authorization", "salary", "gender", "notice_period"} & set(p)  # my call, never exported
+
+
+
+async def test_resume_upload_docx_and_macro_refusal(client, session, monkeypatch):
+    import io
+    import zipfile
+
+    from docx import Document
+
+    from scout_api.routes import resume as resume_routes
+    seen = {}
+
+    async def fake_parse(llm, raw):
+        seen["raw"] = raw
+        return _parsed(source_text="redacted")
+
+    monkeypatch.setattr(resume_routes.Gemini, "from_settings", classmethod(lambda cls: object()))
+    monkeypatch.setattr(resume_routes, "parse_resume_text", fake_parse)
+    d = Document()
+    d.add_paragraph("Jane Example")
+    d.add_paragraph("Skills: Python, FastAPI, Redis, React, PostgreSQL, Docker, LangGraph, LangChain, Qdrant")
+    d.add_paragraph("Nagrik - civic complaints app with six agents, a BullMQ queue and an MCP server, with evals")
+    t = d.add_table(rows=1, cols=2)
+    t.cell(0, 0).text, t.cell(0, 1).text = "Example Institute of Technology", "B.Tech CSE, 2022 - 2026, CGPA 8.3"
+    buf = io.BytesIO()
+    d.save(buf)
+    docx = buf.getvalue()
+    r = await client.post("/api/resume/upload", files={"file": ("cv.docx", docx, "application/octet-stream")}, headers=_auth())
+    assert r.status_code == 200, r.text
+    assert "Nagrik - civic complaints app" in seen["raw"] and "CGPA 8.3" in seen["raw"]  # tables are read too
+    assert r.json()["active"]["source"] == "Uploaded cv.docx"
+
+    # The same file with a VBA project inside is refused before anything is parsed.
+    bad = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(docx)) as src, zipfile.ZipFile(bad, "w") as out:
+        for item in src.infolist():
+            out.writestr(item, src.read(item.filename))
+        out.writestr("word/vbaProject.bin", b"\x00macro")
+    r = await client.post("/api/resume/upload", files={"file": ("cv.docx", bad.getvalue(), "application/octet-stream")}, headers=_auth())
+    assert r.status_code == 422 and "macros" in r.json()["detail"]
+    r = await client.post("/api/resume/upload", files={"file": ("cv.docm", docx, "application/octet-stream")}, headers=_auth())
+    assert r.status_code == 422 and ".docm" in r.json()["detail"]
+    other_zip = io.BytesIO()
+    with zipfile.ZipFile(other_zip, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("notes.txt", "hello")
+    r = await client.post("/api/resume/upload", files={"file": ("cv.docx", other_zip.getvalue(), "application/zip")}, headers=_auth())
+    assert r.status_code == 422 and "isn't a Word document" in r.json()["detail"]
+
+
+
+async def test_score_bands_editable(client, session):
+    import uuid as _uuid
+
+    from scout_core.db.models import JobScore
+    from scout_core.matching import PROMPT_VERSION
+    await _seed(session)
+    job_id = (await client.get("/api/jobs", headers=_auth())).json()["items"][0]["id"]
+    session.add(JobScore(job_id=_uuid.UUID(job_id), score=80, breakdown={}, model="m", prompt_version=PROMPT_VERSION))
+    await session.commit()
+    assert (await client.get(f"/api/jobs/{job_id}", headers=_auth())).json()["match"]["band"] == "good"
+    matching = (await client.get("/api/settings", headers=_auth())).json()["matching"]
+    bad = {**matching, "bands": {"top": 60, "good": 70, "stretch": 55}}
+    assert (await client.put("/api/settings/matching", json=bad, headers=_auth())).status_code == 422
+    ok = {**matching, "bands": {"top": 78, "good": 65, "stretch": 50}}
+    assert (await client.put("/api/settings/matching", json=ok, headers=_auth())).status_code == 200
+    assert (await client.get(f"/api/jobs/{job_id}", headers=_auth())).json()["match"]["band"] == "top"
+    assert (await client.get("/api/jobs", headers=_auth())).json()["items"][0]["match"]["band"] in ("top", None)

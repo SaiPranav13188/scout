@@ -109,7 +109,7 @@ export function ResumeManager() {
       description="Your master resume as Scout reads it: used for match scores now and tailored resumes later. Every save is a new version; earlier versions are never changed."
       actions={
         <>
-          <input ref={fileInput} type="file" accept="application/pdf,.pdf" className="hidden"
+          <input ref={fileInput} type="file" accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload.mutate(f) }} />
           {active && (
             <Button variant="ghost" title="Profile file for the Scout Autofill Chrome extension"
@@ -119,7 +119,7 @@ export function ResumeManager() {
             </Button>
           )}
           <Button variant="outline" onClick={pickFile} disabled={busy}>
-            {upload.isPending ? <Loader2 className="animate-spin" /> : <Upload />} Upload new PDF
+            {upload.isPending ? <Loader2 className="animate-spin" /> : <Upload />} Upload new resume
           </Button>
         </>
       } />
@@ -138,7 +138,7 @@ export function ResumeManager() {
       {upload.isPending && (
         <div role="status" className="flex items-center gap-3 rounded-2xl border border-brand/30 bg-brand-soft p-4 text-sm">
           <Loader2 className="size-4 animate-spin text-brand" />
-          Reading your PDF and structuring it with Gemini. This usually takes 10-40 seconds. Contact details are removed before anything is sent.
+          Reading your resume and structuring it with Gemini. This usually takes 10-40 seconds. Contact details are removed before anything is sent.
         </div>
       )}
 
@@ -189,9 +189,9 @@ function EmptyState({ onUpload, busy }: { onUpload: () => void; busy: boolean })
       <div className="grid size-12 place-items-center rounded-xl bg-brand-soft text-brand"><FileUp className="size-5" /></div>
       <h2 className="mt-4 font-medium">No resume yet</h2>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Upload your resume as a PDF (up to 5 MB). Scout splits it into sections for you to check once.
+        Upload your resume as a PDF or Word file (up to 5 MB). Scout splits it into sections for you to check once.
       </p>
-      <Button className="mt-5 bg-brand text-brand-foreground hover:bg-brand/90" onClick={onUpload} disabled={busy}><Upload /> Upload PDF</Button>
+      <Button className="mt-5 bg-brand text-brand-foreground hover:bg-brand/90" onClick={onUpload} disabled={busy}><Upload /> Upload resume</Button>
     </div>
   )
 }

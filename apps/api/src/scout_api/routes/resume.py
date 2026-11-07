@@ -19,7 +19,7 @@ from scout_core.resume import (
     ResumeFileError,
     clean_contact,
     clean_resume,
-    extract_pdf_bytes,
+    extract_resume_bytes,
     fact_check,
     parse_resume_text,
     profile_fingerprint,
@@ -159,12 +159,12 @@ async def activate_version(version: int, session: Annotated[AsyncSession, Depend
 
 @router.post("/upload")
 async def upload_resume(session: Annotated[AsyncSession, Depends(db)], file: Annotated[UploadFile, File()]):
-    """Upload a new master resume (PDF). Parsed with Gemini; contact details never leave the server."""
+    """Upload a new master resume (PDF or DOCX). Parsed with Gemini; contact details never leave the server."""
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "The file is larger than 5 MB.")
     try:
-        raw = extract_pdf_bytes(data)
+        raw = extract_resume_bytes(data, file.filename or "")
     except ResumeFileError as exc:
         raise HTTPException(422, str(exc)) from exc
     try:

@@ -25,13 +25,14 @@ class MatchOut(BaseModel):
     breakdown: dict
 
 
-BANDS = (("top", 85), ("good", 70), ("stretch", 55))
+BANDS = {"top": 85, "good": 70, "stretch": 55}  # defaults; editable in Settings (matching.bands)
 
 
-def match_out(sc) -> "MatchOut | None":
+def match_out(sc, bands: dict | None = None) -> "MatchOut | None":
     if sc is None:
         return None
-    band = next((name for name, floor in BANDS if sc.score >= floor), "low")
+    b = {**BANDS, **(bands or {})}
+    band = next((name for name in ("top", "good", "stretch") if sc.score >= int(b[name])), "low")
     return MatchOut(score=sc.score, band=band, reasons=sc.reasons or [], matched_skills=sc.matched_skills or [],
                     missing_skills=sc.missing_skills or [], red_flags=sc.red_flags or [],
                     info=(sc.breakdown or {}).get("info", "full"), breakdown=sc.breakdown or {})
@@ -102,7 +103,7 @@ def company_brief(job: Job, company: Company | None) -> CompanyBrief:
 
 
 def job_out(job: Job, company: Company | None, last_visit: datetime | None, detail: bool = False,
-            label: str | None = None, score=None):
+            label: str | None = None, score=None, bands: dict | None = None):
     data = dict(
         id=job.id, title=job.title, company=company_brief(job, company), location=job.location,
         locations=job.locations or [], location_bucket=job.location_bucket, remote=job.remote,
@@ -119,7 +120,7 @@ def job_out(job: Job, company: Company | None, last_visit: datetime | None, deta
         trust=TrustOut(**(job.trust or {"level": job.trust_level, "score": 0, "signals": []})),
         verify_status=job.verify_status, verify_reason=job.verify_reason, verified_at=job.verified_at,
         is_open=job.is_open, status=job.status.value, why=why_line(job), my_label=label,
-        match=match_out(score),
+        match=match_out(score, bands),
     )
     if detail:
         return JobDetail(**data, description=job.description, filter_reasons=job.filter_reasons or [])

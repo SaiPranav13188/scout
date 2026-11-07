@@ -62,6 +62,16 @@ async def write_setting(key: str, session: Annotated[AsyncSession, Depends(db)],
             raise HTTPException(422, f"unknown fields: {', '.join(sorted(unknown))}")
     elif isinstance(default, bool) and not isinstance(value, bool):
         raise HTTPException(422, "expected true/false")
+    if key == "matching" and "bands" in value:
+        b = value["bands"]
+        try:
+            ok = 1 <= int(b["stretch"]) < int(b["good"]) < int(b["top"]) <= 100
+        except (KeyError, TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise HTTPException(422, "score bands must satisfy 1 <= stretch < good < top <= 100")
+    if key == "notifications" and not 0 <= int(value.get("follow_up_days", 7) or 0) <= 60:
+        raise HTTPException(422, "follow_up_days must be 0-60")
     before = await get_setting(session, key)
     await set_setting(session, key, value)
     audit(session, actor="me", action="update_setting", entity="settings", entity_id=key,
