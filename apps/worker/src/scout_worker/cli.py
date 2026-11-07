@@ -107,6 +107,9 @@ def main() -> None:
         print(json.dumps(asyncio.run(work.run_scoring(stamp, limit=int(args[0]) if args else 25)), indent=2))
     elif cmd == "resume-backfill":
         pdf = next((a for a in args if not a.startswith("--")), "private/resume.pdf")
+        if not Path(pdf).is_file():
+            sys.exit(f"No file at {Path(pdf).resolve()}.\nRun this from the scout folder (cd to it first), "
+                     "or give the full path to your resume PDF.")
         print(json.dumps(asyncio.run(work.resume_backfill(pdf, apply="--apply" in args)), indent=2, default=str))
     elif cmd == "match-eval":
         from scout_core.match_eval import to_markdown
