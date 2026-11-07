@@ -49,7 +49,9 @@ class Settings(BaseSettings):
     # Langfuse tracing (optional): every Gemini call becomes a trace when both keys are set.
     langfuse_public_key: str | None = None
     langfuse_secret_key: SecretStr | None = None
-    langfuse_host: str = "https://cloud.langfuse.com"  # EU; https://us.cloud.langfuse.com for US
+    langfuse_host: str = "https://cloud.langfuse.com"
+    # Shared secret for POST /internal/tick (the Postgres timer that runs the schedule every 10 minutes).
+    tick_secret: SecretStr | None = None  # EU; https://us.cloud.langfuse.com for US
 
     # Comma-separated web origins allowed to call the API.
     cors_origins: str = "http://localhost:3000"

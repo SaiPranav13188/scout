@@ -738,3 +738,38 @@ def test_job_message_has_label_buttons():
     datas = [b.get("callback_data", "") for row in buttons for b in row]
     assert {"label:apply:00000000-0000-0000-0000-000000000001", "label:no:00000000-0000-0000-0000-000000000001"} <= set(datas)
     assert all(len(d.encode()) <= 64 for d in datas)  # Telegram's limit for callback data
+
+
+async def test_internal_tick_secret_and_single_run(client, monkeypatch):
+    import asyncio as _asyncio
+
+    from scout_api.routes import internal
+    from scout_worker import work
+    s = get_settings()
+    monkeypatch.setattr(s, "tick_secret", None)
+    assert (await client.post("/internal/tick")).status_code == 404  # off unless configured
+    monkeypatch.setattr(s, "tick_secret", __import__("pydantic").SecretStr("tick-s3cret"))
+    assert (await client.post("/internal/tick")).status_code == 403
+    assert (await client.post("/internal/tick", headers={"X-Tick-Secret": "nope"})).status_code == 403
+    gate, calls = _asyncio.Event(), []
+
+    async def fake_tick(**kw):
+        calls.append(1)
+        await gate.wait()
+        return {"ingest:x": {}, "instant_alerts": {}}, False
+
+    monkeypatch.setattr(work, "run_tick", fake_tick)
+    monkeypatch.setattr(internal, "_state", {"task": None, "started_at": None, "last": None})
+    ok = {"X-Tick-Secret": "tick-s3cret"}
+    first = await client.post("/internal/tick", headers=ok)
+    assert first.status_code == 202 and first.json()["started"] is True
+    await _asyncio.sleep(0)
+    second = await client.post("/internal/tick", headers=ok)
+    assert second.status_code == 200 and second.json()["started"] is False  # never two ticks at once
+    gate.set()
+    await internal._state["task"]
+    assert calls == [1] and internal._state["last"]["slots"] == ["ingest:x"]
+    third = await client.post("/internal/tick", headers=ok)
+    assert third.status_code == 202 and third.json()["last"]["failed"] is False
+    gate.set()
+    await internal._state["task"]

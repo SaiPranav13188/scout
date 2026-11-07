@@ -1291,6 +1291,7 @@ dependencies = [
     { name = "pyjwt", extra = ["crypto"] },
     { name = "python-multipart" },
     { name = "scout-core" },
+    { name = "scout-worker" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1300,6 +1301,7 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.9" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "scout-core", editable = "packages/shared" },
+    { name = "scout-worker", editable = "apps/worker" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
 
