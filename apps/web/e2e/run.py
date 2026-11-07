@@ -1,3 +1,4 @@
+# ruff: noqa: S603, S607, S106 - a local test runner: fixed commands (uv, npx, cp) and fake test data only
 """Dashboard end-to-end test (spec §4 "Playwright Test for the dashboard").
 
 Starts everything it needs on its own, never touching real data:
