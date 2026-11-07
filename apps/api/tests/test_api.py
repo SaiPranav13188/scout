@@ -72,7 +72,8 @@ async def _seed(session):
                       apply_url="https://jobs.lever.co/acme/1", board_token="acme",
                       posted_at=datetime(2026, 11, 5, tzinfo=UTC)),
         NormalizedJob(source="lever", source_job_id="2", company_name="Acme AI", title="Backend Engineer",
-                      description_text="0-1 years of experience. FastAPI.", locations=["Remote"],
+                      description_text="0-1 years of experience. FastAPI services for LLM agents and RAG.",
+                      locations=["Remote"],
                       apply_url="https://jobs.lever.co/acme/2", board_token="acme",
                       posted_at=datetime(2026, 11, 6, tzinfo=UTC)),
         NormalizedJob(source="lever", source_job_id="3", company_name="Acme AI", title="Sales Executive",
@@ -492,3 +493,20 @@ async def test_scores_follow_the_active_resume(client, session):
     assert [j["title"] for j in feed["items"]].count("AI Engineer") == 1 and feed["total"] == 2
     assert feed["items"][0]["title"] == "AI Engineer" and feed["items"][0]["match"]["score"] == 88
     assert (await client.get("/api/resume", headers=_auth())).json()["scoring"]["current"] == 1
+
+
+
+async def test_feed_shows_ai_field_roles_only(client, session):
+    """My field is AI: a plain backend role stays out even when it is entry level."""
+    await _seed(session)
+    company = await get_or_create_company(session, name="Acme AI", website=None, source="test")
+    await store_jobs(session, [NormalizedJob(
+        source="lever", source_job_id="7", company_name="Acme AI", title="Backend Developer",
+        description_text="Freshers welcome. Java and Spring payments APIs.", locations=["Pune"],
+        apply_url="https://jobs.lever.co/acme/7", board_token="acme")],
+        company=company, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+    await session.commit()
+    titles = [j["title"] for j in (await client.get("/api/jobs", headers=_auth())).json()["items"]]
+    assert "Backend Developer" not in titles and "AI Engineer" in titles
+    stats = (await client.get("/api/stats", headers=_auth())).json()
+    assert stats["open_in_feed"] == len(titles)

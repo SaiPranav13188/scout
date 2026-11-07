@@ -371,7 +371,7 @@ async def test_unclear_experience_settled_only_by_verified_quotes(session, db_ur
     from scout_core.db.models import Job
     from scout_core.services import visible_feed_query
     monkeypatch.setattr(get_settings(), "database_url", db_url)
-    await _seed_unclear_job(session, "Backend Engineer (Python)", "u1", BACKEND_TEXT)
+    await _seed_unclear_job(session, "AI Engineer (Python)", "u1", BACKEND_TEXT)
     job = await session.scalar(select(Job))
     assert job.passed_filters and job.experience_unclear
     fake = _FakeLLM()
@@ -392,7 +392,7 @@ async def test_unclear_job_with_fresher_quote_reaches_feed(session, db_url, monk
     from scout_core.db.models import Job
     monkeypatch.setattr(get_settings(), "database_url", db_url)
     # No numbers and no phrase the plain rules know: unclear until the description is read.
-    await _seed_unclear_job(session, "Backend Engineer (Python)", "f1", FRESHER_TEXT)
+    await _seed_unclear_job(session, "AI Engineer (Python)", "f1", FRESHER_TEXT)
     job = await session.scalar(select(Job))
     assert job.experience_unclear
     fake = _FakeLLM()

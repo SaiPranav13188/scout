@@ -29,13 +29,26 @@ def feed_query() -> Select:
 
 MIN_FEED_RELEVANCE = 30
 
+# My field is AI (2026-11-07): the feed, digests and alerts show AI roles, plus software / FDE roles
+# whose description is clearly AI work (at least two AI keywords such as LLM, RAG, agents).
+AI_KEYWORDS = ("llm", "rag", "langchain", "langgraph", "agents", "openai", "gemini", "vector", "mcp", "embeddings")
+
+
+def ai_field():
+    from sqlalchemy import literal_column
+    ai_words = select(func.count()).select_from(
+        func.jsonb_array_elements_text(Job.relevance_matched).table_valued("value").alias("w")
+    ).where(literal_column("w.value").in_(AI_KEYWORDS)).scalar_subquery()
+    return or_(Job.role_family == "applied_ai",
+               and_(Job.role_family.in_(["fde", "backend", "fullstack", "software"]), ai_words >= 2))
+
 
 def visible_feed_query(include_unclear: bool = False) -> Select:
     """What the Today page, Telegram and stats show by default: feed jobs minus scam risk and
     off-target roles, and only jobs confirmed as entry-level. Jobs whose experience is unclear
     (e.g. title-only alert emails) are shown only when asked for."""
     q = feed_query().where(Job.trust_level != "scam_risk", Job.role_family != "unrelated",
-                           Job.relevance_score >= MIN_FEED_RELEVANCE)
+                           Job.relevance_score >= MIN_FEED_RELEVANCE, ai_field())
     if not include_unclear:
         q = q.where(Job.experience_unclear.is_(False))
     return q

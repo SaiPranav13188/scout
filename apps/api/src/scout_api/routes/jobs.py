@@ -12,7 +12,7 @@ from scout_api.schemas import ExperienceCorrectionIn, JobDetail, JobPage, LabelI
 from scout_core.db.models import Company, Job, JobLabel, JobScore
 from scout_core.matching import PROMPT_VERSION
 from scout_core.runs import audit
-from scout_core.services import MIN_FEED_RELEVANCE, feed_query, set_status
+from scout_core.services import MIN_FEED_RELEVANCE, ai_field, feed_query, set_status
 from scout_core.settings_store import get_setting
 from scout_core.types import ApplicationStatus
 
@@ -46,7 +46,7 @@ async def list_jobs(
     if status != "all":
         stmt = stmt.where(Job.status == ApplicationStatus(status))
     if not all_roles:
-        stmt = stmt.where(Job.role_family != "unrelated", Job.relevance_score >= MIN_FEED_RELEVANCE)
+        stmt = stmt.where(Job.role_family != "unrelated", Job.relevance_score >= MIN_FEED_RELEVANCE, ai_field())
     stmt = stmt.where(Job.trust_level != "scam_risk")
     unclear_count_q = stmt.where(Job.experience_unclear.is_(True))
     if not include_unclear:

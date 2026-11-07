@@ -185,3 +185,15 @@ def test_years_in_a_field_is_a_requirement(text):
 ])
 def test_non_requirements_and_fresher_ranges_still_kept(text):
     assert classify("Software Engineer", text).decision == Decision.KEEP
+
+
+
+@pytest.mark.parametrize("title", ["Associate Data Scientist", "Junior AI Engineer"])
+def test_weak_title_words_alone_are_not_proof(title):
+    v = classify(title, None)
+    assert v.decision == Decision.KEEP and v.experience_unclear  # hidden until something confirms 0-1 years
+
+
+def test_weak_title_word_with_fresher_description_is_confirmed():
+    v = classify("Associate Data Scientist", "Open to freshers from the 2026 batch.")
+    assert not v.experience_unclear

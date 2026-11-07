@@ -12,7 +12,8 @@ class RelevanceRules:
     families: dict[str, list[str]] = field(default_factory=lambda: {
         "applied_ai": [r"\bai\b", r"artificial intelligence", r"\baiml\b", r"\bllm", r"gen ?ai", r"agentic", r"\bagents?\b", r"machine learning",
                        r"\bml\b", r"applied scientist", r"\bnlp\b", r"\brag\b", r"prompt engineer",
-                       r"ai engineer", r"ai/ml", r"data scien"],
+                       r"ai engineer", r"ai/ml", r"data scien", r"deep learning", r"computer vision",
+                       r"\bcv engineer", r"mlops|ml ops", r"\bgenai\b", r"research engineer", r"ai research"],
         "fde": [r"forward[- ]deployed", r"\bfde\b", r"solutions? engineer", r"deployment engineer",
                 r"implementation engineer", r"customer engineer"],
         "backend": [r"back[- ]?end", r"\bapi\b", r"platform engineer", r"python developer",

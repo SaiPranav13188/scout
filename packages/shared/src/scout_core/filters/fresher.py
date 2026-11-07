@@ -295,7 +295,12 @@ def classify(title: str, description: str | None, rules: FresherRules | None = N
             return FresherVerdict(Decision.DROP, Confidence.HIGH, worst.min, worst.max, False,
                                   [f"prefers {_fmt(worst)} experience: \"{worst.evidence}\""], reqs)
 
-    # 4. No numeric requirement: rely on explicit fresher wording.
+    # 4. No numeric requirement: rely on explicit fresher wording. "Associate" / "Junior" alone are
+    # not proof (they often mean 1-3 years); they need the description to say so too.
+    weak = {"associate", "junior", "jr"}
+    if title_keep and not text_keep and set(title_keep) <= weak:
+        reasons.append(f"title says '{title_keep[0]}', but nothing confirms 0-1 years")
+        return FresherVerdict(Decision.KEEP, Confidence.LOW, None, None, True, reasons, reqs)
     if text_keep or title_keep:
         conf = Confidence.HIGH if text_keep else Confidence.MEDIUM
         return FresherVerdict(Decision.KEEP, conf, 0 if text_keep else None, None, False,
