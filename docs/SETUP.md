@@ -121,6 +121,16 @@ uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_
   Lightsail VM running `docker compose up -d api worker beat redis`. Confirm current prices first.
 - Run **exactly one** `beat` process.
 
+## 7. Langfuse (optional: traces of every Gemini call)
+
+Free "Hobby" plan: no card, 50k units a month, 30 days of data, 2 users (langfuse.com/pricing, checked 2026-11-07).
+1. Sign up at cloud.langfuse.com (EU) or us.cloud.langfuse.com (US) and create a project.
+2. Project settings → API keys → create. Copy the public key (`pk-lf-…`) and secret key (`sk-lf-…`).
+3. Put them in `.env` as `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` (and `LANGFUSE_HOST` if you chose US),
+   in Render (scout-api → Environment), and as GitHub secrets with the same names (for the scheduled runs).
+Each Gemini call then shows up as a trace named after its purpose (score_match, tailor_resume, seniority…),
+with model, tokens, timing, the prompt (first 4,000 characters) and the answer. Without keys nothing is sent.
+
 ## Later phases
 
 | Phase | What | Variables |

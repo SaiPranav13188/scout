@@ -108,6 +108,26 @@ class Gemini:
         raise AssertionError("unreachable")
 
     async def json(self, schema: type[T], prompt: str, *, purpose: str, temperature: float = 0.1) -> T:
+        from scout_core import tracing
+
+        start = tracing.now_ns()
+        before = len(self.usage.by_call)
+        try:
+            result = await self._json(schema, prompt, purpose=purpose, temperature=temperature)
+        except LLMError as exc:
+            if tracing.enabled():
+                await tracing.send(tracing.build_span(purpose=purpose, model=self.model, prompt=prompt, output=None,
+                                                      input_tokens=0, output_tokens=0, start_ns=start,
+                                                      end_ns=tracing.now_ns(), error=str(exc)))
+            raise
+        if tracing.enabled():
+            call = self.usage.by_call[-1] if len(self.usage.by_call) > before else {}
+            await tracing.send(tracing.build_span(purpose=purpose, model=call.get("model"), prompt=prompt,
+                                                  output=result.model_dump_json(), input_tokens=call.get("in", 0),
+                                                  output_tokens=call.get("out", 0), start_ns=start, end_ns=tracing.now_ns()))
+        return result
+
+    async def _json(self, schema: type[T], prompt: str, *, purpose: str, temperature: float = 0.1) -> T:
         from google.genai import types
 
         config = types.GenerateContentConfig(

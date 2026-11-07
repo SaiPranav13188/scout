@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     gemini_embedding_model: str | None = None
     # Comma-separated models to try, in order, when the main one stays overloaded (503).
     gemini_fallback_models: str = ""
+    # Langfuse tracing (optional): every Gemini call becomes a trace when both keys are set.
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_host: str = "https://cloud.langfuse.com"  # EU; https://us.cloud.langfuse.com for US
 
     # Comma-separated web origins allowed to call the API.
     cors_origins: str = "http://localhost:3000"

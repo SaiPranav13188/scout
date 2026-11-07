@@ -34,6 +34,10 @@ jobs:
       GEMINI_MODEL: gemini-3.5-flash-lite
       GEMINI_FALLBACK_MODELS: gemini-3.5-flash,gemini-3.8-flash
       GEMINI_EMBEDDING_MODEL: gemini-embedding-2
+      # Langfuse tracing: off until these secrets exist.
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+      LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
