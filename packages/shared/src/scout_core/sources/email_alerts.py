@@ -80,8 +80,14 @@ def parse_linkedin(msg: EmailMessage) -> list[NormalizedJob]:
     see_all = re.search(r"See all jobs on LinkedIn:\s*(\S+)", text)
     if see_all:
         from urllib.parse import parse_qs
-        codes = set(",".join(parse_qs(urlsplit(see_all.group(1)).query).get("f_E", [])).split(",")) - {""}
-        entry_level_alert = bool(codes) and codes <= {"1", "2"}
+        query = parse_qs(urlsplit(see_all.group(1)).query)
+        codes = set(",".join(query.get("f_E", [])).split(",")) - {""}
+        # LinkedIn's newer search pages (2026) write the filter into the search words instead of f_E,
+        # e.g. keywords="AI Engineer Internship or Entry level On-site or Hybrid".
+        words = " ".join(query.get("keywords", [])).lower()
+        worded = (re.search(r"\b(internship|entry[ -]level)\b", words) is not None
+                  and re.search(r"\b(associate|mid[- ]senior|senior|director|executive)\b", words) is None)
+        entry_level_alert = (bool(codes) and codes <= {"1", "2"}) or (not codes and worded)
     jobs = []
     for block in re.split(r"\n[ \t]*-{10,}[ \t]*\n", text):
         m = re.search(r"View job:\s*https?://(?:www\.)?linkedin\.com/(?:comm/)?jobs/view/(\d+)", block)
