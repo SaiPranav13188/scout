@@ -1,0 +1,19 @@
+[project]
+name = "scout-mcp"
+version = "0.1.0"
+description = "MCP server: ask Claude about Scout's jobs, pipeline and labels"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "scout-core",
+    "mcp>=1.9",
+]
+
+[project.scripts]
+scout-mcp = "scout_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scout_mcp"]

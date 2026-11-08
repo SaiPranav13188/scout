@@ -8,7 +8,7 @@ from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from scout_core.db.models import Application, Job, Notification
+from scout_core.db.models import Application, Job, JobLabel, Notification
 from scout_core.notify.telegram import DigestItem
 from scout_core.runs import audit
 from scout_core.types import ApplicationStatus
@@ -177,3 +177,39 @@ async def today_stats(session: AsyncSession, now: datetime | None = None) -> dic
         feed.c.status == ApplicationStatus.DISCOVERED.value))
     return {"new_24h": int(new_24h or 0), "applied_24h": int(applied_24h or 0),
             "follow_ups_due": int(follow_ups or 0), "open_in_feed": int(total_feed or 0)}
+
+
+# ------------------------------------------------------------------ eval labels (spec §11 Phase 3)
+LABELS = ("apply", "maybe", "no")
+LABEL_TARGET = 40  # spec: 30-50 labelled jobs before trusting the match score
+_KEEP = object()
+
+
+async def label_summary(session: AsyncSession) -> dict:
+    counts = dict((await session.execute(select(JobLabel.label, func.count()).group_by(JobLabel.label))).all())
+    total = sum(counts.values())
+    return {"apply": counts.get("apply", 0), "maybe": counts.get("maybe", 0), "no": counts.get("no", 0),
+            "total": total, "target": LABEL_TARGET}
+
+
+async def set_label(session: AsyncSession, job_id: uuid.UUID, label: str | None, *, actor: str,
+                    note: Any = _KEEP) -> dict:
+    """My apply / maybe / no judgement of a job (None clears it). Leaving `note` out keeps the saved note.
+    Returns the label counts. Raises LookupError for an unknown job, ValueError for an unknown label."""
+    if label is not None and label not in LABELS:
+        raise ValueError(f"label must be one of {', '.join(LABELS)}")
+    if await session.get(Job, job_id) is None:
+        raise LookupError("job not found")
+    existing = await session.scalar(select(JobLabel).where(JobLabel.job_id == job_id))
+    if label is None:
+        if existing:
+            await session.delete(existing)
+    elif existing:
+        existing.label = label
+        if note is not _KEEP:
+            existing.note = note
+    else:
+        session.add(JobLabel(job_id=job_id, label=label, note=None if note is _KEEP else note))
+    audit(session, actor=actor, action="label_job", entity="job", entity_id=str(job_id), after={"label": label})
+    await session.commit()
+    return await label_summary(session)

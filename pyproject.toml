@@ -9,18 +9,20 @@ dependencies = []
 package = false
 
 [tool.uv.workspace]
-members = ["packages/shared", "apps/api", "apps/worker"]
+members = ["packages/shared", "apps/api", "apps/worker", "apps/mcp"]
 
 [tool.uv.sources]
 scout-core = { workspace = true }
 scout-api = { workspace = true }
 scout-worker = { workspace = true }
+scout-mcp = { workspace = true }
 
 [dependency-groups]
 dev = [
     "scout-core",
     "scout-api",
     "scout-worker",
+    "scout-mcp",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "respx>=0.21",
@@ -51,7 +53,7 @@ known-first-party = ["scout_core", "scout_api", "scout_worker"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-testpaths = ["packages/shared/tests", "apps/api/tests", "apps/worker/tests"]
+testpaths = ["packages/shared/tests", "apps/api/tests", "apps/worker/tests", "apps/mcp/tests"]
 markers = [
     "db: needs a running Postgres (DATABASE_URL); skipped otherwise",
     "network: hits the real internet; skipped unless SCOUT_NETWORK_TESTS=1",

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from scout_api.deps import db
 from scout_api.schemas import ExperienceCorrectionIn, JobDetail, JobPage, LabelIn, StatusIn, job_out
+from scout_core import services
 from scout_core.db.models import Company, Job, JobLabel, JobScore
 from scout_core.matching import PROMPT_VERSION
 from scout_core.runs import audit
@@ -159,35 +160,18 @@ async def correct_experience(job_id: UUID, body: ExperienceCorrectionIn,
 @router.put("/{job_id}/label")
 async def set_label(job_id: UUID, body: LabelIn, session: Annotated[AsyncSession, Depends(db)]):
     """My apply / maybe / no judgement. These labels become the Phase 3 matching eval set."""
-    if await session.get(Job, job_id) is None:
-        raise HTTPException(404, "job not found")
-    existing = await session.scalar(select(JobLabel).where(JobLabel.job_id == job_id))
-    if body.label is None:
-        if existing:
-            await session.delete(existing)
-    elif existing:
-        existing.label, existing.note = body.label, body.note
-    else:
-        session.add(JobLabel(job_id=job_id, label=body.label, note=body.note))
-    audit(session, actor="me", action="label_job", entity="job", entity_id=str(job_id),
-          after={"label": body.label})
-    await session.commit()
-    return await label_summary(session)
+    try:
+        return await services.set_label(session, job_id, body.label, actor="me", note=body.note)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 labels_router = APIRouter(prefix="/api/labels", tags=["labels"])
+LABEL_TARGET = services.LABEL_TARGET
+label_summary = services.label_summary
 
 
 @labels_router.get("/summary")
 async def label_summary_route(session: Annotated[AsyncSession, Depends(db)]):
     return await label_summary(session)
 
-
-LABEL_TARGET = 40  # spec: 30-50 labelled jobs before trusting the match score
-
-
-async def label_summary(session: AsyncSession) -> dict:
-    counts = dict((await session.execute(select(JobLabel.label, func.count()).group_by(JobLabel.label))).all())
-    total = sum(counts.values())
-    return {"apply": counts.get("apply", 0), "maybe": counts.get("maybe", 0), "no": counts.get("no", 0),
-            "total": total, "target": LABEL_TARGET}

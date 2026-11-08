@@ -127,28 +127,19 @@ async def send_resume(session: AsyncSession, tg: TelegramClient, callback_id: st
 
 async def save_label(session: AsyncSession, tg: TelegramClient, callback_id: str, data: str) -> None:
     """👍 / 🤔 / 👎 under a job: my apply / maybe / no label (same as the dashboard's "Your call")."""
-    from sqlalchemy import func, select
-
-    from scout_core.db.models import Job, JobLabel
-    from scout_core.runs import audit
+    from scout_core.services import LABELS, set_label
 
     _, label, raw_id = (data.split(":", 2) + ["", ""])[:3]
-    if label not in ("apply", "maybe", "no"):
+    if label not in LABELS:
         return
     try:
         job_id = uuid.UUID(raw_id)
     except ValueError:
         return
-    if await session.get(Job, job_id) is None:
+    try:
+        total = (await set_label(session, job_id, label, actor="telegram"))["total"]
+    except LookupError:
         await tg.answer_callback(callback_id, "That job no longer exists.")
         return
-    row = await session.scalar(select(JobLabel).where(JobLabel.job_id == job_id))
-    if row:
-        row.label = label
-    else:
-        session.add(JobLabel(job_id=job_id, label=label))
-    audit(session, actor="telegram", action="label_job", entity="job", entity_id=str(job_id), after={"label": label})
-    await session.commit()
-    total = await session.scalar(select(func.count()).select_from(JobLabel))
     word = {"apply": "👍 I'd apply", "maybe": "🤔 Maybe", "no": "👎 Not for me"}[label]
     await tg.answer_callback(callback_id, f"Saved: {word} · {total} of 40 labels")

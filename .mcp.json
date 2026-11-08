@@ -3,6 +3,17 @@
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=suxzlxcxrkcigouyxlfh"
+    },
+    "scout": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--quiet",
+        "--directory",
+        "${CLAUDE_PROJECT_DIR:-.}",
+        "scout-mcp"
+      ]
     }
   }
 }
