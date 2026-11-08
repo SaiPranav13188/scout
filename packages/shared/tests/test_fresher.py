@@ -209,3 +209,27 @@ def test_senior_ai_engineer_posting_from_linkedin_is_dropped():
             "- Education: Master's or Ph.D. in Computer Science.")
     v = classify("AI Engineer (GIS)", desc)
     assert v.decision == Decision.DROP and "6+ years" in v.reasons[0]
+
+
+def test_equal_opportunity_footer_is_not_a_ppo_and_interns_must_meet_experience_rule():
+    """HackerRank "AI Researcher Intern" (2026-11-08): footer "equal opportunity" matched "ppo", and the
+    intern-to-full-time shortcut skipped the "2-3 years of experience" requirement."""
+    footer = "HackerRank is a proud equal employment opportunity and affirmative action employer."
+    v = classify("AI Researcher Intern", "Research deep learning.\n" + footer)
+    assert v.decision == Decision.DROP and "internship without full-time conversion" in v.reasons[0]
+    desc = ("Who you are: M.Tech./M.S./Ph.D. in AI/ML. 2-3 years of experience in Deep Learning. "
+            "Pre-placement offer for strong interns. " + footer)
+    v = classify("AI Researcher Intern", desc)
+    assert v.decision == Decision.DROP and "2-3 years" in v.reasons[0]
+    v = classify("AI Engineer Intern", "6-month internship with a pre-placement offer (PPO). Final-year students.")
+    assert v.decision == Decision.KEEP and v.reasons == ["intern-to-full-time role"]
+
+
+def test_keep_phrases_match_whole_words_and_typo_years_still_count():
+    """Paytm "Growth Affiliates" (2026-11-08): "810 years of experience" was read as the fresher phrase "0 years"."""
+    v = classify("Growth Affiliates", "Requirements\n810 years of experience in affiliate marketing.")
+    assert v.decision == Decision.DROP
+    v = classify("Analyst", "We are a 10 years old company. You will build dashboards.")
+    assert "description says '0 years'" not in v.reasons and v.experience_unclear
+    v = classify("Analyst", "0 years of experience needed; final-year students welcome.")
+    assert v.decision == Decision.KEEP and not v.experience_unclear

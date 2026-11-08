@@ -500,6 +500,7 @@ async def check_unclear_experience(llm, limit: int = 15) -> dict:
     from sqlalchemy import Text, cast
 
     from scout_core.llm import LLMError
+    from scout_core.pipeline.evaluate import AWAITING_SECOND_READING
     from scout_core.seniority import MARK, read_seniority
 
     async def load(s):
@@ -508,7 +509,9 @@ async def check_unclear_experience(llm, limit: int = 15) -> dict:
             Job.experience_corrected_by_me.is_not(True), func.length(Job.description) > 300,
             ~Job.source.like("%\\_alert", escape="\\"),  # email snippets are never the whole posting
             ~cast(Job.fresher_reasons, Text).contains(MARK))
-            .order_by(Job.relevance_score.desc(), Job.first_seen_at.desc()).limit(limit)
+            # Jobs the rules already approved first: they are the ones waiting to be shown.
+            .order_by(cast(Job.fresher_reasons, Text).contains(AWAITING_SECOND_READING).desc(),
+                      Job.relevance_score.desc(), Job.first_seen_at.desc()).limit(limit)
             .with_only_columns(Job.id, Job.title, Job.description))).all()
 
     counts = {"checked": 0, "fresher_ok": 0, "needs_experience": 0, "unclear": 0, "errors": 0}
@@ -664,7 +667,7 @@ async def recheck_feed(apply: bool = False) -> dict:
     stored. Jobs I corrected by hand are left alone. Dry run unless apply=True.
     """
     from scout_core.filters.fresher import Decision, classify
-    from scout_core.pipeline.evaluate import require_full_posting
+    from scout_core.pipeline.evaluate import await_second_reading, require_full_posting
     from scout_core.seniority import MARK
     from scout_core.settings_store import load_rules
 
@@ -683,6 +686,8 @@ async def recheck_feed(apply: bool = False) -> dict:
                     job.description = None
             desc = None if job.description == INVENTED_LINKEDIN_TEXT else job.description
             v = require_full_posting(job.source, classify(job.title, desc, fresher_rules, job.employment_type))
+            if fresher_rules.second_reading:
+                v = await_second_reading(v)
             if v.decision == Decision.DROP:
                 dropped.append(f"{job.title} @ {job.company_name}: {v.reasons[0]}"[:160])
                 if apply:

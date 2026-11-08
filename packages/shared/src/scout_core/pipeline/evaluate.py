@@ -63,6 +63,17 @@ def require_full_posting(source: str, verdict: FresherVerdict) -> FresherVerdict
                    reasons=["only an email snippet was available, the full posting wasn't read", *verdict.reasons])
 
 
+AWAITING_SECOND_READING = "rules found it entry-level; waiting for the full-text check"
+
+
+def await_second_reading(verdict: FresherVerdict) -> FresherVerdict:
+    """Rules-approved jobs stay hidden until the second reader (Gemini, whole posting, verified quote)
+    agrees: see scout_worker.work.check_unclear_experience."""
+    if verdict.decision == Decision.DROP or verdict.experience_unclear:
+        return verdict
+    return replace(verdict, experience_unclear=True, reasons=[AWAITING_SECOND_READING, *verdict.reasons])
+
+
 def evaluate_job(
     job: NormalizedJob,
     *,
@@ -82,6 +93,8 @@ def evaluate_job(
         loc = LocationInfo(LocationBucket.REMOTE_RESTRICTED, (), True)
     fresher = classify(job.title, job.description_text, fresher_rules, job.employment_type)
     fresher = require_full_posting(job.source, fresher)
+    if (fresher_rules or FresherRules()).second_reading:
+        fresher = await_second_reading(fresher)
     relevance = classify_role(job.title, job.description_text, relevance_rules)
     trust = evaluate(source=job.source, apply_url=job.apply_url, company_website=company_website,
                      description=job.description_text, in_yc_directory=in_yc_directory,

@@ -17,7 +17,7 @@ from scout_core.types import ApplicationStatus, AtsType, NormalizedJob, RawFetch
 
 pytestmark = pytest.mark.db
 FIX = Path(__file__).parent / "fixtures"
-RULES = dict(fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+RULES = dict(fresher_rules=FresherRules(second_reading=False), relevance_rules=RelevanceRules(), prefs=Preferences())
 
 
 def _parse(source, token, name):

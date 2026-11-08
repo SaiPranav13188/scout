@@ -80,7 +80,7 @@ async def _seed(session):
                       description_text="Freshers welcome.", locations=["Mumbai"],
                       apply_url="https://jobs.lever.co/acme/3", board_token="acme"),
     ]
-    await store_jobs(session, jobs, company=company, fresher_rules=FresherRules(),
+    await store_jobs(session, jobs, company=company, fresher_rules=FresherRules(second_reading=False),
                      relevance_rules=RelevanceRules(), prefs=Preferences())
     await session.commit()
 
@@ -258,7 +258,7 @@ async def test_unclear_experience_hidden_unless_asked(client, session):
     await store_jobs(session, [NormalizedJob(
         source="linkedin_alert", source_job_id="9", company_name="Acme AI", title="Machine Learning Engineer",
         locations=["Bengaluru"], apply_url="https://www.linkedin.com/jobs/view/9/")],
-        company=company, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+        company=company, fresher_rules=FresherRules(second_reading=False), relevance_rules=RelevanceRules(), prefs=Preferences())
     await session.commit()
     default = (await client.get("/api/jobs", headers=_auth())).json()
     assert "Machine Learning Engineer" not in [j["title"] for j in default["items"]]
@@ -504,7 +504,7 @@ async def test_feed_shows_ai_field_roles_only(client, session):
         source="lever", source_job_id="7", company_name="Acme AI", title="Backend Developer",
         description_text="Freshers welcome. Java and Spring payments APIs.", locations=["Pune"],
         apply_url="https://jobs.lever.co/acme/7", board_token="acme")],
-        company=company, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+        company=company, fresher_rules=FresherRules(second_reading=False), relevance_rules=RelevanceRules(), prefs=Preferences())
     await session.commit()
     titles = [j["title"] for j in (await client.get("/api/jobs", headers=_auth())).json()["items"]]
     assert "Backend Developer" not in titles and "AI Engineer" in titles

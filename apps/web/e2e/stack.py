@@ -72,7 +72,7 @@ async def seed(db_url: str) -> None:
                                            description_text=desc, locations=["Bengaluru"], apply_url=f"https://jobs.lever.co/acme/{i}",
                                            board_token="acme", posted_at=datetime.now(UTC) - timedelta(hours=2))
                              for i, t in enumerate(titles)],
-                         company=co, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+                         company=co, fresher_rules=FresherRules(second_reading=False), relevance_rules=RelevanceRules(), prefs=Preferences())
         await s.commit()
         jobs = {j.title: j for j in (await s.scalars(select(Job))).all()}
         await set_status(s, jobs["GenAI Engineer - New Grad"].id, ApplicationStatus.APPLIED, actor="me")

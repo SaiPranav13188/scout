@@ -217,6 +217,10 @@ def test_snippets_never_confirm_entry_level_but_can_reject():
         assert "full posting wasn't read" in v.reasons[0]
     # A snippet can still reject.
     assert evaluate_job(job("wellfound_alert", "4 years of experience required.")).keep is False
-    # A full company-board posting that says so is confirmed.
+    # A full company-board posting that says so passes the rules, then waits for the second reader
+    # (Gemini, whole posting); without the second reading it would be confirmed directly.
     v = evaluate_job(job("greenhouse", "We hire freshers from the 2026 batch. " * 5)).fresher
+    assert v.experience_unclear is True and "waiting for the full-text check" in v.reasons[0]
+    v = evaluate_job(job("greenhouse", "We hire freshers from the 2026 batch. " * 5),
+                     fresher_rules=FresherRules(second_reading=False)).fresher
     assert v.experience_unclear is False and v.confidence.value == "high"

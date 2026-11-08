@@ -132,7 +132,7 @@ async def _seed_visible_job(session, title="AI Engineer", sid="1"):
         source="lever", source_job_id=sid, company_name="Acme AI", title=title,
         description_text="Freshers welcome. Python, LLM, RAG.", locations=["Bengaluru"],
         apply_url=f"https://jobs.lever.co/acme/{sid}", board_token="acme")],
-        company=company, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+        company=company, fresher_rules=FresherRules(second_reading=False), relevance_rules=RelevanceRules(), prefs=Preferences())
     await session.commit()
 
 
@@ -347,7 +347,7 @@ async def _seed_unclear_job(session, title, sid, description):
     await store_jobs(session, [NormalizedJob(
         source="lever", source_job_id=sid, company_name="Acme AI", title=title, description_text=description,
         locations=["Bengaluru"], apply_url=f"https://jobs.lever.co/acme/{sid}", board_token="acme")],
-        company=company, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+        company=company, fresher_rules=FresherRules(second_reading=False), relevance_rules=RelevanceRules(), prefs=Preferences())
     await session.commit()
 
 
@@ -446,3 +446,39 @@ def test_extension_upload_name_keeps_my_pdf_name():
     assert upload_name(Path("/x/saipranav_resume_7 (1).pdf"), "Sai Pranav Bandaru") == "saipranav_resume_7 (1).pdf"
     assert upload_name(Path("private/resume.pdf"), "Sai Pranav Bandaru") == "Sai_Pranav_Bandaru_Resume.pdf"
     assert upload_name(Path("/x/a.pdf"), "X", "Bandaru CV") == "Bandaru CV.pdf"
+
+
+@pytest.mark.db
+@pytest.mark.parametrize(("answer", "visible", "passed"), [
+    ({"verdict": "fresher_ok", "evidence": "We hire freshers from the 2026 batch."}, True, True),
+    ({"verdict": "needs_experience", "evidence": "You will own the architecture of our retrieval stack."}, False, False),
+    ({"verdict": "unclear", "evidence": ""}, False, True),
+])
+async def test_rules_approved_job_waits_for_second_reader(session, db_url, monkeypatch, answer, visible, passed):
+    """2026-11-08: the rules alone never put a job in the feed; Gemini must read the whole posting and agree."""
+    from scout_core.db.models import Job
+    from scout_core.filters.fresher import FresherRules
+    from scout_core.filters.relevance import RelevanceRules
+    from scout_core.pipeline.evaluate import Preferences
+    from scout_core.pipeline.ingest import get_or_create_company, store_jobs
+    from scout_core.services import visible_feed_query
+    from scout_core.types import NormalizedJob
+    monkeypatch.setattr(get_settings(), "database_url", db_url)
+    company = await get_or_create_company(session, name="Acme AI", website=None, source="test")
+    text = ("We hire freshers from the 2026 batch. Build LLM agents and RAG pipelines in Python. "
+            "You will own the architecture of our retrieval stack. ") * 3
+    await store_jobs(session, [NormalizedJob(
+        source="lever", source_job_id="g1", company_name="Acme AI", title="AI Engineer", description_text=text,
+        locations=["Bengaluru"], apply_url="https://jobs.lever.co/acme/g1", board_token="acme")],
+        company=company, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+    await session.commit()
+    job = await session.scalar(select(Job))
+    count = lambda: session.execute(visible_feed_query().with_only_columns(func.count()))  # noqa: E731
+    assert job.passed_filters and job.experience_unclear  # the rules said yes: still hidden
+    assert (await count()).scalar() == 0
+    fake = _FakeLLM()
+    fake.seniority = answer
+    await work.check_unclear_experience(fake)
+    await session.refresh(job)
+    assert job.passed_filters is passed
+    assert ((await count()).scalar() == 1) is visible

@@ -35,6 +35,9 @@ class FresherRules:
     """Editable in Settings. Defaults follow the spec."""
 
     max_experience_years: float = 1.0
+    # Two readers (2026-11-08): a job the rules approve is shown only after Gemini has read the whole
+    # posting and quoted the sentence that makes it a fresher role (checked against the text).
+    second_reading: bool = True
     include_internships: bool = False  # plain internships; intern-to-full-time is always kept
     title_drop_words: list[str] = field(default_factory=lambda: [
         "senior", "sr", "lead", "staff", "principal", "manager", "architect", "director",
@@ -87,7 +90,8 @@ _WORDNUM = {
     "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
     "eight": 8, "nine": 9, "ten": 10, "twelve": 12, "fifteen": 15,
 }
-_NUM = r"(\d{1,2}(?:\.\d)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)"
+# Up to 3 digits: Paytm's "810 years of experience" (a typo for 8-10) must still count as a requirement.
+_NUM = r"(\d{1,3}(?:\.\d)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)"
 _YEARS = r"(?:years?|yrs?|yoe)"
 _MONTHS = r"(?:months?|mos?)"
 _DASH = r"\s*(?:-|to|–|—)\s*"
@@ -241,25 +245,32 @@ def classify(title: str, description: str | None, rules: FresherRules | None = N
     # 2. Internships: keep only conversion roles unless internships are enabled.
     is_intern = _has_word(t, "intern") or _has_word(t, "internship") or (
         fold(employment_type) in ("intern", "internship"))
-    converts = re.search(r"(ppo|pre[- ]placement offer|full[- ]time conversion|convert(?:ed|ible)? to "
+    # Word boundaries matter: a bare "ppo" matched "equal opportunity" in legal footers (2026-11-08).
+    converts = re.search(r"\b(ppo|pre[- ]placement offer|full[- ]time conversion|convert(?:ed|ible)? to "
                          r"(?:a )?full[- ]time|intern(?:ship)?[- ]to[- ](?:full[- ]time|fte|hire)|"
-                         r"job offer.{0,40}post[- ]internship)",
+                         r"job offer.{0,40}post[- ]internship)\b",
                          f"{t} {d}") is not None
     if is_intern and not converts and not rules.include_internships:
         return FresherVerdict(Decision.DROP, Confidence.HIGH, None, None, False,
                               ["internship without full-time conversion"], [])
-    if is_intern and converts:
-        # An internship that converts to full time is a fresher role by definition.
-        return FresherVerdict(Decision.KEEP, Confidence.HIGH, 0, None, False, ["intern-to-full-time role"], [])
-
-    # 3. Explicit experience requirements (title first, then description).
+    # 3. Explicit experience requirements (title first, then description). Read even for
+    # intern-to-full-time roles: "AI Researcher Intern" asking for 2-3 years is not a fresher role.
     reqs = extract_requirements(title) + (extract_requirements(description) if description else [])
+    if is_intern and converts:
+        too_high = [r for r in reqs if _requirement_fits(r, limit) is False]
+        if too_high:
+            return FresherVerdict(Decision.DROP, Confidence.HIGH, too_high[0].min, too_high[0].max, False,
+                                  [f"internship, but requires {_fmt(too_high[0])} experience: \"{too_high[0].evidence}\""],
+                                  reqs)
+        # An internship that converts to full time, with no experience demand, is a fresher role.
+        return FresherVerdict(Decision.KEEP, Confidence.HIGH, 0, None, False, ["intern-to-full-time role"], reqs)
     hard = [r for r in reqs if not r.soft]
     soft = [r for r in reqs if r.soft]
     hard_fits = [(r, _requirement_fits(r, limit)) for r in hard]
 
     title_keep = [w for w in rules.title_keep_words if _has_word(t, w)]
-    text_keep = [p for p in rules.text_keep_phrases if p in d]
+    # Whole words only: "0 years" must not match inside "10 years" (2026-11-08).
+    text_keep = [p for p in rules.text_keep_phrases if _has_word(d, p)]
 
     exp_min = min((r.min for r in hard), default=None)
     exp_max_values = [r.max for r in hard if r.max is not None]

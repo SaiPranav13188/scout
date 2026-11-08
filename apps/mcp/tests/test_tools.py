@@ -32,7 +32,7 @@ async def _seed(session) -> dict[str, Job]:
         NormalizedJob(source="lever", source_job_id="3", company_name="Acme AI", title="Sales Executive",
                       description_text="Freshers welcome.", locations=["Mumbai"],
                       apply_url="https://jobs.lever.co/acme/3", board_token="acme"),
-    ], company=company, fresher_rules=FresherRules(), relevance_rules=RelevanceRules(), prefs=Preferences())
+    ], company=company, fresher_rules=FresherRules(second_reading=False), relevance_rules=RelevanceRules(), prefs=Preferences())
     await session.commit()
     return {j.title: j for j in (await session.scalars(select(Job))).all()}
 

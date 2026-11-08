@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from scout_core.llm import Gemini, untrusted
 
-PROMPT_VERSION = "seniority-v1"
+PROMPT_VERSION = "seniority-v2"
 MARK = "AI check:"  # prefix on fresher_reasons; also marks a job as already checked
 
 PROMPT = """You decide whether a job is open to a fresher: a 2026 graduate with 0 years of full-time
@@ -27,6 +27,10 @@ internship that converts to full time.
 Answer "needs_experience" if it asks for prior professional experience: any number of years above 1,
 "proven experience", "experience building/shipping X in production", "you have worked as", mentoring
 others, owning architecture, or similar.
+Read the WHOLE posting, including requirements, qualifications and "who you are" sections, before
+answering. Any demand for prior professional experience anywhere in it wins: "entry level", "intern",
+"early career" or "freshers welcome" elsewhere does not cancel "2-3 years of experience" or a required
+Master's / PhD research record. Ignore legal or EEO footers ("equal opportunity employer").
 Otherwise answer "unclear". Do not guess from the job title or company.
 
 "evidence" must be one sentence copied exactly, word for word, from the posting. Use "" for unclear.
