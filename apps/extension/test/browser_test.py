@@ -88,6 +88,20 @@ def main():
         res = run(page2, "https://jobs.lever.co/acme/2/apply", html="<form><label for=e>Email</label><input id=e type=email>"
                   "<iframe src='https://www.google.com/recaptcha/api2/anchor'></iframe></form>")
         check(res["status"] == "stopped" and page2.eval_on_selector("#e", "e => e.value") == "", "stops on CAPTCHA, fills nothing")
+        # Lever / Greenhouse forms carry an invisible CAPTCHA that only runs on Submit: fill anyway.
+        for i, captcha_html in enumerate((
+                "<div class='h-captcha' data-size='invisible'><iframe src='https://newassets.hcaptcha.com/captcha/v1/x/static/hcaptcha.html#frame=checkbox-invisible'></iframe></div>",
+                "<iframe src='https://www.google.com/recaptcha/api2/anchor?k=x&size=invisible' width=256 height=60></iframe>",
+                "<iframe src='https://newassets.hcaptcha.com/captcha/v1/x' style='width:0;height:0;border:0'></iframe>",
+                # The real Lever page (hevodata, 2026-11-08): no data-size in the HTML; hCaptcha's script
+                # adds a full-size frame marked checkbox-invisible.
+                "<div id='h-captcha' class='h-captcha' data-sitekey='x'><iframe src='https://newassets.hcaptcha.com/"
+                "captcha/v1/x/static/hcaptcha.html#frame=checkbox-invisible' width=300 height=150></iframe></div>")):
+            pg = b.new_page()
+            res = run(pg, f"https://jobs.lever.co/acme/{10 + i}/apply",
+                      html=f"<form><label for=e>Email</label><input id=e type=email>{captcha_html}</form>")
+            check(res["status"] != "stopped" and pg.eval_on_selector("#e", "e => e.value") != "",
+                  f"invisible CAPTCHA #{i + 1}: fills the form (Submit is still mine)")
         page3 = b.new_page()
         res = run(page3, "https://www.linkedin.com/jobs/view/1", html="<form><label for=e>Email</label><input id=e type=email></form>")
         check(res["status"] == "blocked" and page3.eval_on_selector("#e", "e => e.value") == "", "never runs on LinkedIn")

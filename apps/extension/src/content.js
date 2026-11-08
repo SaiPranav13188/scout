@@ -26,9 +26,29 @@
     return report({ status: "blocked", message: "Scout never fills LinkedIn or Wellfound forms. Apply there yourself." })
   }
 
-  // Stop on CAPTCHA, login and OTP pages: those are always for me to do.
-  const captcha = document.querySelector(
-    "iframe[src*='recaptcha'], iframe[src*='hcaptcha'], iframe[src*='turnstile'], iframe[src*='challenges.cloudflare'], .g-recaptcha, .h-captcha, .cf-turnstile")
+  // Stop on a CAPTCHA I have to solve, and on login and OTP pages: those are always for me to do.
+  // Many application forms (Lever, Greenhouse) carry an INVISIBLE CAPTCHA that only runs when I press
+  // Submit; that one doesn't stop filling (Scout never presses Submit), it is only mentioned.
+  const CAPTCHA_SEL = "iframe[src*='recaptcha'], iframe[src*='hcaptcha'], iframe[src*='turnstile'], " +
+    "iframe[src*='challenges.cloudflare'], .g-recaptcha, .h-captcha, .cf-turnstile"
+  function invisibleKind(el) {
+    const src = (el.getAttribute("src") || "").toLowerCase()
+    // reCAPTCHA: size=invisible; hCaptcha: frame=checkbox-invisible (set by its script, not in the HTML).
+    return el.getAttribute("data-size") === "invisible" || /invisible/.test(src) ||
+      !!el.closest(".grecaptcha-badge, [data-size='invisible']")
+  }
+  function shownChallenge(el) {
+    if (invisibleKind(el)) return false
+    const r = el.getBoundingClientRect()
+    const st = getComputedStyle(el)
+    // A challenge you can see: the checkbox widgets are about 300x65-78 px.
+    return r.width >= 100 && r.height >= 40 && st.visibility !== "hidden" && st.display !== "none" && st.opacity !== "0"
+  }
+  // A widget box is judged by the CAPTCHA frames inside it once they exist; an empty box by itself.
+  const captchaEls = [...document.querySelectorAll(CAPTCHA_SEL)]
+    .filter((el) => el.tagName === "IFRAME" || !el.querySelector("iframe"))
+  const captcha = captchaEls.find(shownChallenge)
+  const invisibleCaptcha = !captcha && captchaEls.length > 0
   const password = document.querySelector("input[type='password']")
   const otp = document.querySelector("input[autocomplete='one-time-code']")
   if (captcha || password || otp) {
@@ -233,6 +253,7 @@
       yours.slice(0, 12).forEach((y) => ul.append(h("li", y)))
       box.append(ul)
       box.append(h("div", "Scout never presses Submit. Review the form, then submit it yourself.", "margin-top:8px;color:#9ca3af"))
+      if (invisibleCaptcha) box.append(h("div", "This form has a CAPTCHA check that runs when you press Submit; complete it if asked.", "margin-top:4px;color:#9ca3af"))
       const undoBtn = h("button", "Undo fill", "margin-top:10px;margin-right:8px;background:#374151;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer")
       undoBtn.type = "button"
       undoBtn.addEventListener("click", () => globalThis.__scoutUndo())
