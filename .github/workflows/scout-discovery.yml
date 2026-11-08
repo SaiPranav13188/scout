@@ -23,8 +23,7 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
+      - name: Install uv (from PyPI, retried; GitHub release downloads gave 504s)
+        run: for i in 1 2 3 4 5; do pipx install "uv==0.13.6" && break; sleep 15; done; uv --version
       - run: uv sync --frozen --package scout-worker
       - run: uv run --package scout-worker python -m scout_worker.cli tick --only discovery
