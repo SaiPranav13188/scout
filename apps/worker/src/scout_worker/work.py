@@ -546,7 +546,7 @@ async def resumes_for_top_matches(llm, limit: int = 3) -> dict:
 
     async def load(s):
         top = int(((await _gs(s, "matching")).get("bands") or {}).get("top", 85))
-        latest = (select(JobScore.job_id, JobScore.score).where(JobScore.prompt_version == PROMPT_VERSION)
+        latest = (select(JobScore.job_id, JobScore.score, JobScore.breakdown).where(JobScore.prompt_version == PROMPT_VERSION)
                   .ext(distinct_on(JobScore.job_id)).order_by(JobScore.job_id, JobScore.created_at.desc()).subquery())
         has_resume = select(ResumeGenerated.job_id)
         return (await s.scalars(visible_feed_query().join(latest, latest.c.job_id == Job.id).where(
@@ -771,11 +771,12 @@ async def match_eval(maybe_counts_as_apply: bool = False):
     from scout_core.match_eval import Example, evaluate
     from scout_core.matching import PROMPT_VERSION
 
-    latest = (select(JobScore.job_id, JobScore.score).where(JobScore.prompt_version == PROMPT_VERSION)
+    latest = (select(JobScore.job_id, JobScore.score, JobScore.breakdown).where(JobScore.prompt_version == PROMPT_VERSION)
               .ext(distinct_on(JobScore.job_id)).order_by(JobScore.job_id, JobScore.created_at.desc()).subquery())
     async with worker_session() as session:
         rows = (await session.execute(
-            select(Job.title, Job.company_name, JobLabel.label, latest.c.score, Job.relevance_score)
+            select(Job.title, Job.company_name, JobLabel.label, latest.c.score, Job.relevance_score,
+                   latest.c.breakdown)
             .join(JobLabel, JobLabel.job_id == Job.id).outerjoin(latest, latest.c.job_id == Job.id))).all()
-    return evaluate([Example(title=t, company=c, label=lab, score=sc, baseline=rel or 0)
-                     for t, c, lab, sc, rel in rows], maybe_counts_as_apply=maybe_counts_as_apply)
+    return evaluate([Example(title=t, company=c, label=lab, score=sc, baseline=rel or 0, parts=bd)
+                     for t, c, lab, sc, rel, bd in rows], maybe_counts_as_apply=maybe_counts_as_apply)

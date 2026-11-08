@@ -5,6 +5,10 @@ precision, recall and false positives when "score >= floor" is read as "worth ap
 agreement between the score band and my label; and ranking quality (AUC: how often an
 "apply" job scores higher than a "no" job). The plain-code role-fit score is shown next to it
 as a baseline: the match score earns its LLM cost only if it beats that.
+
+Ablation: each stored score keeps its parts (skills overlap, embedding similarity, Gemini rubric), so
+the score is rebuilt offline with parts left out (e.g. rules only, rules + embeddings) to show what each
+part adds. No extra LLM calls.
 """
 
 from dataclasses import dataclass, field
@@ -20,6 +24,28 @@ class Example:
     label: str  # apply | maybe | no
     score: int | None  # match score (None: not scored yet)
     baseline: int  # plain-code relevance score
+    parts: dict | None = None  # score breakdown: skills, embedding, rubric (0-100 each) and weights
+
+
+# Variants for the ablation: which parts of the match score are kept (weights renormalised over them).
+VARIANTS: dict[str, tuple[str, ...]] = {
+    "Skills overlap only (rules)": ("skills",),
+    "Embeddings only": ("embedding",),
+    "Gemini rubric only": ("rubric",),
+    "Rules + embeddings (no LLM rubric)": ("skills", "embedding"),
+    "Rules + rubric (no embeddings)": ("skills", "rubric"),
+    "All three (production score)": ("skills", "embedding", "rubric"),
+}
+DEFAULT_WEIGHTS = {"skills": 0.35, "embedding": 0.25, "rubric": 0.40}
+
+
+def variant_score(parts: dict, keep: tuple[str, ...]) -> int | None:
+    """Rebuild a score from its stored parts using only `keep`; None if a part is missing."""
+    weights = {**DEFAULT_WEIGHTS, **(parts.get("weights") or {})}
+    if any(parts.get(k) is None for k in keep):
+        return None
+    total = sum(weights[k] for k in keep)
+    return round(sum(weights[k] * parts[k] for k in keep) / total) if total else None
 
 
 @dataclass
@@ -33,6 +59,7 @@ class Report:
     auc: float | None = None
     baseline_auc: float | None = None
     worst: list[dict] = field(default_factory=list)
+    ablation: list[dict] = field(default_factory=list)
 
 
 def band_label(score: int) -> str:
@@ -79,6 +106,19 @@ def evaluate(examples: list[Example], *, maybe_counts_as_apply: bool = False) ->
     rep.baseline_auc = auc([e.baseline for e in scored if e.label in positive],
                            [e.baseline for e in scored if e.label == "no"])
 
+    with_parts = [e for e in scored if e.parts]
+    for name, keep in VARIANTS.items():
+        vs = [(variant_score(e.parts, keep), e.label) for e in with_parts]
+        vs = [(v, lab) for v, lab in vs if v is not None]
+        if not vs:
+            continue
+        tp = sum(v >= 70 and lab in positive for v, lab in vs)
+        fp = sum(v >= 70 and lab not in positive for v, lab in vs)
+        fn = sum(v < 70 and lab in positive for v, lab in vs)
+        rep.ablation.append({"variant": name, "jobs": len(vs),
+                             "auc": auc([v for v, lab in vs if lab in positive], [v for v, lab in vs if lab == "no"]),
+                             "precision70": _ratio(tp, tp + fp), "recall70": _ratio(tp, tp + fn)})
+
     gap = {"apply": lambda s: 100 - s, "no": lambda s: s, "maybe": lambda s: abs(s - 62)}
     rep.worst = [{"title": e.title, "company": e.company, "label": e.label, "score": e.score}
                  for e in sorted(scored, key=lambda e: gap[e.label](e.score), reverse=True)
@@ -111,6 +151,11 @@ def to_markdown(rep: Report, *, target: int = 40) -> str:
         lines.append(f"| {mine} | {row['apply']} | {row['maybe']} | {row['no']} |")
     lines += ["", f"Ranking (AUC, apply vs no; 50% = coin flip): match score **{_pct(rep.auc)}**, "
               f"plain-code role fit **{_pct(rep.baseline_auc)}**."]
+    if rep.ablation:
+        lines += ["", "What each part adds (score rebuilt from its stored parts; weights renormalised):", "",
+                  "| Variant | Jobs | AUC | Precision ≥70 | Recall ≥70 |", "|---|---|---|---|---|"]
+        lines += [f"| {a['variant']} | {a['jobs']} | {_pct(a['auc'])} | {_pct(a['precision70'])} | "
+                  f"{_pct(a['recall70'])} |" for a in rep.ablation]
     if rep.worst:
         lines += ["", "Biggest disagreements:"]
         lines += [f"- {w['title']} @ {w['company']}: score {w['score']}, my label {w['label']}" for w in rep.worst]

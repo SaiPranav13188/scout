@@ -58,3 +58,33 @@ def test_markdown_is_honest_about_small_or_empty_sets():
     assert "Only 0 of the 40" in empty and "Nothing to measure" in empty
     md = to_markdown(evaluate([_ex("apply", 90), _ex("no", 20)]))
     assert "| score ≥ 70 | 1 | 100% | 100% | 0 |" in md and "match score **100%**" in md
+
+
+def _parts(skills, embedding, rubric):
+    return {"skills": skills, "embedding": embedding, "rubric": rubric,
+            "weights": {"skills": 0.35, "embedding": 0.25, "rubric": 0.40}}
+
+
+def test_variant_score_renormalises_weights():
+    from scout_core.match_eval import variant_score
+    p = _parts(80, 40, 60)
+    assert variant_score(p, ("skills",)) == 80
+    assert variant_score(p, ("skills", "embedding")) == round((0.35 * 80 + 0.25 * 40) / 0.60)
+    assert variant_score(p, ("skills", "embedding", "rubric")) == round(0.35 * 80 + 0.25 * 40 + 0.40 * 60)
+    assert variant_score({"skills": 50}, ("skills", "embedding")) is None  # missing part: skipped
+
+
+def test_ablation_shows_which_part_ranks_well():
+    # Embeddings separate apply from no perfectly; the skills part ranks them backwards.
+    data = [Example("A", "Co", "apply", 70, 50, _parts(20, 90, 70)),
+            Example("B", "Co", "no", 60, 50, _parts(90, 10, 60))]
+    rep = evaluate(data)
+    by = {a["variant"]: a for a in rep.ablation}
+    assert by["Embeddings only"]["auc"] == 1.0
+    assert by["Skills overlap only (rules)"]["auc"] == 0.0
+    assert by["All three (production score)"]["jobs"] == 2
+    assert "What each part adds" in to_markdown(rep)
+
+
+def test_no_ablation_without_parts():
+    assert evaluate([_ex("apply", 90), _ex("no", 20)]).ablation == []
