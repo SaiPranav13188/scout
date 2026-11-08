@@ -177,35 +177,20 @@ def test_real_alert_emails(path):
     assert isinstance(text, str)
 
 
-def test_linkedin_entry_level_alert_is_trusted():
-    from scout_core.pipeline.evaluate import evaluate_job
-    filtered = LINKEDIN_TEXT + ("See all jobs on LinkedIn:  https://www.linkedin.com/comm/jobs/search-results/"
-                                "?keywords=ai%20engineer&geoId=1&f_E=1%2C2&f_TPR=r86400\n")
-    _, jobs = parse_alert(_msg("LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>", "x", text=filtered))
-    assert jobs[0].extra["entry_level_alert"] is True
-    v = evaluate_job(jobs[0]).fresher
-    assert v.experience_unclear is False and v.confidence.value == "high"
-    # An alert without the filter (or including Associate / Mid-Senior) stays "unclear".
-    for f_e in ("", "&f_E=2%2C3", "&f_E=4"):
-        other = LINKEDIN_TEXT + f"See all jobs on LinkedIn:  https://www.linkedin.com/comm/jobs/search-results/?keywords=x{f_e}\n"
-        _, js = parse_alert(_msg("LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>", "x", text=other))
-        assert evaluate_job(js[0]).fresher.experience_unclear is True
-
-
-
-def test_linkedin_new_search_wording_counts_as_entry_level():
-    """LinkedIn's 2026 search pages put the experience filter in the keywords, not in f_E."""
+def test_linkedin_entry_level_filter_is_never_proof():
+    """2026-11-08: an "Entry level" LinkedIn alert delivered a 6+ years role. The alert's filter (f_E code
+    or search words) is recorded but never makes a title-only job count as entry-level."""
     from scout_core.pipeline.evaluate import evaluate_job
 
     def alert(query):
-        text = LINKEDIN_TEXT + f"See all jobs on LinkedIn:  https://www.linkedin.com/comm/jobs/search-results/?geoId=102713980&keywords={query}\n"
+        text = LINKEDIN_TEXT + f"See all jobs on LinkedIn:  https://www.linkedin.com/comm/jobs/search-results/?geoId=102713980&{query}\n"
         _, jobs = parse_alert(_msg("LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>", "x", text=text))
         return jobs[0]
 
-    trusted = alert("AI%20Engineer%20Internship%20or%20Entry%20level%20On-site%20or%20Hybrid")
-    assert trusted.extra["entry_level_alert"] is True
-    assert evaluate_job(trusted).fresher.experience_unclear is False
-    assert alert("Machine%20Learning%20Engineer%20Entry%20level").extra["entry_level_alert"] is True
-    for q in ("AI%20Engineer%20Entry%20level%20or%20Associate", "AI%20Engineer%20Mid-Senior%20level", "AI%20Engineer",
-              "AI%20Engineer%20Entry%20level&f_E=2%2C3"):  # last: an explicit code wins
-        assert alert(q).extra["entry_level_alert"] is False, q
+    for q in ("keywords=ai%20engineer&f_E=1%2C2", "keywords=AI%20Engineer%20Internship%20or%20Entry%20level%20On-site",
+              "keywords=AI%20Engineer", "keywords=x&f_E=4"):
+        job = alert(q)
+        assert job.description_text is None, q  # nothing invented
+        v = evaluate_job(job).fresher
+        assert v.experience_unclear is True and v.confidence.value == "low", q
+    assert alert("keywords=ai%20engineer&f_E=1%2C2").extra["entry_level_alert"] is True  # kept for information

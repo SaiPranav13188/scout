@@ -653,6 +653,9 @@ async def run_scoring(slot_key: str | None = None, limit: int = 25) -> dict:
 RUNNERS["scoring"] = run_scoring
 
 
+INVENTED_LINKEDIN_TEXT = "Entry level (from a LinkedIn alert filtered to entry level / internship)."
+
+
 async def recheck_feed(apply: bool = False) -> dict:
     """Re-run the fresher filter (current rules) on jobs still waiting in the feed.
 
@@ -660,6 +663,7 @@ async def recheck_feed(apply: bool = False) -> dict:
     stored. Jobs I corrected by hand are left alone. Dry run unless apply=True.
     """
     from scout_core.filters.fresher import Decision, classify
+    from scout_core.seniority import MARK
     from scout_core.settings_store import load_rules
 
     async with worker_session() as session:
@@ -668,20 +672,31 @@ async def recheck_feed(apply: bool = False) -> dict:
             Job.passed_filters.is_(True), Job.status == ApplicationStatus.DISCOVERED,
             Job.experience_corrected_by_me.is_not(True)))).all()
         dropped: list[str] = []
+        cleared = 0
         for job in jobs:
-            v = classify(job.title, job.description, fresher_rules, job.employment_type)
+            if job.description == INVENTED_LINKEDIN_TEXT:
+                # Written by the LinkedIn alert parser until 2026-11-08 instead of a real description.
+                cleared += 1
+                if apply:
+                    job.description = None
+            desc = None if job.description == INVENTED_LINKEDIN_TEXT else job.description
+            v = classify(job.title, desc, fresher_rules, job.employment_type)
             if v.decision == Decision.DROP:
                 dropped.append(f"{job.title} @ {job.company_name}: {v.reasons[0]}"[:160])
                 if apply:
                     job.passed_filters = False
                     job.filter_reasons = ["experience: " + "; ".join(v.reasons), *(job.filter_reasons or [])]
+            elif any(str(r).startswith(MARK) for r in (job.fresher_reasons or [])):
+                continue  # Gemini already read this posting and quoted its evidence: keep that verdict
             elif apply:
                 job.experience_min, job.experience_max = v.experience_min, v.experience_max
                 job.experience_unclear, job.fresher_confidence = v.experience_unclear, v.confidence.value
                 job.fresher_reasons = v.reasons
         if apply:
             await session.commit()
-        return {"checked": len(jobs), "dropped": len(dropped), "examples": dropped[:15], "applied": apply}
+        unclear = sum(1 for j in jobs if j.passed_filters and j.experience_unclear) if apply else None
+        return {"checked": len(jobs), "invented_text_removed": cleared, "dropped": len(dropped),
+                "now_experience_unclear": unclear, "examples": dropped[:15], "applied": apply}
 
 
 async def resume_backfill(pdf_path: str, apply: bool = False) -> dict:

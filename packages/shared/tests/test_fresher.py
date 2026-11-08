@@ -197,3 +197,15 @@ def test_weak_title_words_alone_are_not_proof(title):
 def test_weak_title_word_with_fresher_description_is_confirmed():
     v = classify("Associate Data Scientist", "Open to freshers from the 2026 batch.")
     assert not v.experience_unclear
+
+
+
+def test_senior_ai_engineer_posting_from_linkedin_is_dropped():
+    """The algoleap "AI Engineer (GIS)" posting (2026-11-08): a plain title, a senior description."""
+    desc = ("Top 5 Skills\n- Production Experience with atleast 2 Agentic deployments\n"
+            "- Mentor and provide technical leadership to junior and mid-level Data Scientists and ML Engineers.\n"
+            "Required Qualifications\n- Experience: 6+ years of progressive experience in Data Science, Machine "
+            "Learning, or Applied AI, with a minimum of 3 years in a leadership or principal role.\n"
+            "- Education: Master's or Ph.D. in Computer Science.")
+    v = classify("AI Engineer (GIS)", desc)
+    assert v.decision == Decision.DROP and "6+ years" in v.reasons[0]

@@ -74,8 +74,11 @@ def parse_linkedin(msg: EmailMessage) -> list[NormalizedJob]:
         from scout_core.normalize import LocationBucket, classify_location
         if classify_location([searched.group(1).strip()]).bucket == LocationBucket.INDIA:
             country = "IN"
-    # LinkedIn's experience filter (f_E) is in the alert's "See all jobs" link. Codes 1 = Internship and
-    # 2 = Entry level; when the alert is limited to those, LinkedIn already screened for experience.
+    # LinkedIn's experience filter (f_E codes 1 = Internship, 2 = Entry level, or the same words in the
+    # search keywords) is recorded for information ONLY. It is never proof: the level is set by the
+    # employer, and search words are just matched as text. A 6+ years "AI Engineer (GIS)" posting came
+    # through an "Entry level" alert on 2026-11-08. Alert emails carry only the title, so these jobs stay
+    # "experience unclear" (hidden from the default feed) until a real description says otherwise.
     entry_level_alert = False
     see_all = re.search(r"See all jobs on LinkedIn:\s*(\S+)", text)
     if see_all:
@@ -103,8 +106,7 @@ def parse_linkedin(msg: EmailMessage) -> list[NormalizedJob]:
         mode = modes.get(job_id)
         jobs.append(NormalizedJob(
             source="linkedin_alert", source_job_id=job_id, company_name=company, title=title,
-            description_text="Entry level (from a LinkedIn alert filtered to entry level / internship)."
-            if entry_level_alert else None,
+            description_text=None,  # the email has no description; never invent one
             location=location, locations=[location] if location else [],
             remote=True if mode == "Remote" else (False if mode == "On-site" else None),
             posted_at=None, posted_at_kind="not_given",  # alert emails don't state the posting date
