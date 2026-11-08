@@ -53,6 +53,48 @@ for stated experience; 4 intern-to-full-time roles now kept. Random sample of 30
 requirements, 0 wrong. AI second opinion on undecidable postings: 27 read, 22 dropped (each with a verified
 quote, reviewed by hand: all correct), 0 shown, 5 left hidden.
 
+### Labelled eval: does it show exactly the fresher jobs? (2026-11-08)
+
+`uv run python -m scout_worker.cli fresher-eval [--heldout] [--rules-only]`
+
+Two sets of realistic postings, each labelled **before** any run: `evals/fresher_labelled.jsonl`
+(48: 20 fresher, 20 experienced, 8 unclear) and a held-out set written before the fixes below
+(`evals/fresher_heldout.jsonl`, 24: 10 / 10 / 4). They include the traps seen in real postings:
+"senior" mentors, founders' "20+ years", "Freshers need not apply", Junior titles asking for 2 years,
+"Entry Level" titles asking for 18 months, EEO footers, caps like "no more than 12 months".
+Correct = fresher postings shown; experienced and unclear postings hidden (my rule).
+"Production" = what the feed does: the rules don't reject it AND Gemini, reading the whole posting,
+confirms it with a quote that is checked against the text.
+
+| Set | Code | Reader | Accuracy | Precision | Recall | Wrongly shown | Wrongly hidden |
+|---|---|---|---|---|---|---|---|
+| Main (48) | before fixes | Rules only | 92% (44/48) | 94% | 85% | 1 | 3 |
+| Main (48) | before fixes | Gemini only | 94% (45/48) | 100% | 85% | 0 | 3 |
+| Main (48) | before fixes | **Production** | **92% (44/48)** | **100%** | 80% | **0** | 4 |
+| Held-out (24) | before fixes | **Production** | **92% (22/24)** | **100%** | 80% | **0** | 2 |
+| Held-out (24) | after fixes | Rules only | 100% (24/24) | 100% | 100% | 0 | 0 |
+| Held-out (24) | after fixes | **Production** | **96% (23/24)** | **100%** | 90% | **0** | 1 |
+| Main (48) | after fixes (tuned on it) | **Production** | **100% (48/48)** | **100%** | 100% | **0** | 0 |
+
+Precision = of the jobs shown, how many really are fresher jobs. It was 100% in every production
+run: no experienced or unclear posting was shown. Every mistake was a fresher job wrongly hidden.
+The main-set "after" number is optimistic (the fixes were made while looking at it); the held-out
+96% is the honest estimate. The last held-out miss (a quote saying "must not have more than 12
+months") is fixed since, but not re-scored on that set.
+
+Fixes made from this eval (general patterns, each with tests): "Freshers need not apply" /
+"not hiring freshers" now reject; upper limits ("more than 1 year will not be considered", "no more
+than 18 months") are caps that a fresher meets, not minimums; other people's experience ("our founders
+have 20+ years") is ignored; month minimums ("at least 24 months", "minimum of 18 months") count;
+"worked as" is experience wording; Gemini's quote check accepts "0-1 years", "zero to one year",
+"not more than 12 months", "completing their degree in 2026". A regression test keeps the rules at
+0 wrongly shown and ≥95% accuracy on both sets.
+
+Limits: synthetic postings written by me (Claude), not real ones; 72 postings is small (one mistake
+moves accuracy by 1-4 points); Gemini's answers vary slightly between runs; 3 of 48 calls failed on
+network timeouts and were retried. In the live system a failed call leaves the job hidden until the
+next run.
+
 ## 2. Dedupe (spec §13.3)
 
 - Unit tests: same posting via two sources (tracking params, `/apply` suffix, both Greenhouse hosts) collapses

@@ -18,6 +18,7 @@
   uv run python -m scout_worker.cli seniority-check 40       # Gemini reads "experience unclear" jobs
   uv run python -m scout_worker.cli recheck-feed [--apply]  # re-run the fresher filter on feed jobs
   uv run python -m scout_worker.cli tailor-eval 6              # Phase 4 eval on real jobs (stores nothing)
+  uv run python -m scout_worker.cli fresher-eval [--heldout] [--rules-only]  # labelled fresher/experienced postings
   uv run python -m scout_worker.cli match-eval [--maybe-is-apply]  # match score vs my labels (read-only)
 """
 
@@ -252,6 +253,14 @@ def main() -> None:
         print(json.dumps(asyncio.run(work.recheck_feed(apply="--apply" in args)), indent=2))
     elif cmd == "tailor-eval":
         print(json.dumps(asyncio.run(work.tailor_eval(int(args[0]) if args else 6)), indent=2))
+    elif cmd == "fresher-eval":
+        from scout_core.fresher_eval import DATA, HELDOUT, report, run
+        llm = None
+        if "--rules-only" not in args:
+            from scout_core.llm import Gemini
+            llm = Gemini.from_settings()
+        path = HELDOUT if "--heldout" in args else DATA
+        print(report(asyncio.run(run(llm, delay=1.0, path=path))))
     elif cmd == "match-eval":
         from scout_core.match_eval import to_markdown
         print(to_markdown(asyncio.run(work.match_eval("--maybe-is-apply" in args))))

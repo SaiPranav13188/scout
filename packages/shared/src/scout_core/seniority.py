@@ -56,7 +56,10 @@ def quote_found(evidence: str, title: str, description: str) -> bool:
 
 _FRESHER_SIGNAL = re.compile(
     r"fresher|fresh graduate|new grad|recent grad|graduat|entry[- ]level|0 years|zero years|no (prior )?"
-    r"experience|campus|batch|class of|early career|level 1|level i\b|intern|trainee|no minimum experience",
+    r"experience|campus|batch|class of|early career|level 1|level i\b|intern|trainee|no minimum experience|"
+    # "0-1 years", "0 to 1 year", "zero to one year", "no more than 12 months" (2026-11-08 eval)
+    r"\b0\s*(?:-|to|–)\s*(?:1|12)\s*(?:years?|yrs?|months?)|zero to one|(?:no|not)(?: have)? more than (?:12|twelve) months|"
+    r"(?:completing|finishing|complete|completed) (?:their|your|the) degree (?:in|by) 20\d\d",
     re.IGNORECASE)
 
 

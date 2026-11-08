@@ -1,0 +1,242 @@
+[
+ {
+  "id": "HF01",
+  "label": "fresher",
+  "title": "Junior ML Engineer",
+  "rules_show": true,
+  "rules_reason": "states 0-1 years experience; title says 'junior'; description says '2026 graduates'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Experience: 0 - 1 year (final-year students and 2026 graduates are welcome).\"",
+  "production_show": true
+ },
+ {
+  "id": "HF02",
+  "label": "fresher",
+  "title": "AI Engineer - Fresh Graduate",
+  "rules_show": false,
+  "rules_reason": "requires 15+ years experience: \"our cto has 15 years of experience building speech systems and will mentor\"",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"This is a role for fresh graduates.\"",
+  "production_show": false
+ },
+ {
+  "id": "HF03",
+  "label": "fresher",
+  "title": "Graduate Data Scientist",
+  "rules_show": true,
+  "rules_reason": "title says 'graduate'",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: quote doesn't show it's open to freshers, left hidden",
+  "production_show": false
+ },
+ {
+  "id": "HF04",
+  "label": "fresher",
+  "title": "Associate Software Engineer - AI",
+  "rules_show": true,
+  "rules_reason": "title says 'associate'; description says '2026 graduates'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"This opening is for 2026 graduates only.\"",
+  "production_show": true
+ },
+ {
+  "id": "HF05",
+  "label": "fresher",
+  "title": "NLP Engineer (Entry Level)",
+  "rules_show": true,
+  "rules_reason": "states 0-1 years experience; title says 'entry level'; description says 'entry level'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Entry level role, open to candidates with zero to one year of experience.\"",
+  "production_show": true
+ },
+ {
+  "id": "HF06",
+  "label": "fresher",
+  "title": "Machine Learning Intern - Full Time Conversion",
+  "rules_show": true,
+  "rules_reason": "intern-to-full-time role",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Pixelcraft Studio is offering a six-month machine learning internship that converts to a full-time role for interns who perform well.\"",
+  "production_show": true
+ },
+ {
+  "id": "HF07",
+  "label": "fresher",
+  "title": "AI Engineer",
+  "rules_show": true,
+  "rules_reason": "description says 'freshers'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"We are open to freshers for this AI Engineer role, as long as you have built something real with LLMs.\"",
+  "production_show": true
+ },
+ {
+  "id": "HF08",
+  "label": "fresher",
+  "title": "Data Engineer Trainee - ML Platform",
+  "rules_show": true,
+  "rules_reason": "title says 'trainee'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"The programme is for recent graduates with no prior industry experience.\"",
+  "production_show": true
+ },
+ {
+  "id": "HF09",
+  "label": "fresher",
+  "title": "Applied Scientist I",
+  "rules_show": true,
+  "rules_reason": "description says 'entry-level'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"New graduates from Master's or Bachelor's programmes are encouraged to apply.\"",
+  "production_show": true
+ },
+ {
+  "id": "HF10",
+  "label": "fresher",
+  "title": "Conversational AI Associate",
+  "rules_show": true,
+  "rules_reason": "title says 'associate'; description says 'freshers'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Freshers can apply; we provide two weeks of training.\"",
+  "production_show": true
+ },
+ {
+  "id": "HE01",
+  "label": "experienced",
+  "title": "ML Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 5+ years experience: \"we need an ml engineer with 5 years of experience in recommender systems or ads ranking.\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"We need an ML Engineer with 5 years of experience in recommender systems or ads ranking.\"",
+  "production_show": false
+ },
+ {
+  "id": "HE02",
+  "label": "experienced",
+  "title": "Associate Data Scientist",
+  "rules_show": false,
+  "rules_reason": "requires 2+ years experience: \"candidates should have 2+ years of experience in clinical or pharma ana\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Candidates should have 2+ years of experience in clinical or pharma analytics and be skilled in R or Python.\"",
+  "production_show": false
+ },
+ {
+  "id": "HE03",
+  "label": "experienced",
+  "title": "AI Engineer",
+  "rules_show": true,
+  "rules_reason": "description says 'freshers'",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Helios Retail AI is not hiring freshers for this position.\"",
+  "production_show": false
+ },
+ {
+  "id": "HE04",
+  "label": "experienced",
+  "title": "Generative AI Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 3-5 years experience: \"experience: 3-5 years in software development with at least 1\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Experience: 3-5 years in software development with at least 1 year in generative AI.\"",
+  "production_show": false
+ },
+ {
+  "id": "HE05",
+  "label": "experienced",
+  "title": "Junior Data Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 2+ years experience: \"requirements: two years of experience with etl pipelines and sql in a product\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Requirements: two years of experience with ETL pipelines and SQL in a production environment.\"",
+  "production_show": false
+ },
+ {
+  "id": "HE06",
+  "label": "experienced",
+  "title": "Lead Machine Learning Engineer",
+  "rules_show": false,
+  "rules_reason": "title contains 'lead'",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Anvil Robotics is hiring a Lead Machine Learning Engineer to lead a team of four engineers building perception for warehouse robots.\"",
+  "production_show": false
+ },
+ {
+  "id": "HE07",
+  "label": "experienced",
+  "title": "AI Engineer - Entry Level",
+  "rules_show": true,
+  "rules_reason": "title says 'entry level'; description says 'entry level'",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Note: although listed as entry level, the hiring manager requires a minimum of 18 months of professional experience with LLM applications.\"",
+  "production_show": false
+ },
+ {
+  "id": "HE08",
+  "label": "experienced",
+  "title": "Data Scientist",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"You have worked as a data scientist in a bank or fintech, have taken credit models to production, and have presented model results to regulators.\"",
+  "production_show": false
+ },
+ {
+  "id": "HE09",
+  "label": "experienced",
+  "title": "MLOps Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 4+ years experience: \"cloud is hiring an mlops engineer with 4+ yrs of experience in devops and at least 2\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Kinetic Cloud is hiring an MLOps Engineer with 4+ yrs of experience in DevOps and at least 2 yrs supporting ML workloads.\"",
+  "production_show": false
+ },
+ {
+  "id": "HE10",
+  "label": "experienced",
+  "title": "AI Research Intern",
+  "rules_show": false,
+  "rules_reason": "internship, but requires 3+ years experience: \"s internship is for phd candidates with 3+ years of research experience in computer visi\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"This internship is for PhD candidates with 3+ years of research experience in computer vision and publications at CVPR or NeurIPS.\"",
+  "production_show": false
+ },
+ {
+  "id": "HU01",
+  "label": "unclear",
+  "title": "AI Engineer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "HU02",
+  "label": "unclear",
+  "title": "ML Engineer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "HU03",
+  "label": "unclear",
+  "title": "Data Scientist - Growth",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "HU04",
+  "label": "unclear",
+  "title": "GenAI Developer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ }
+]

@@ -97,7 +97,7 @@ _MONTHS = r"(?:months?|mos?)"
 _DASH = r"\s*(?:-|to|–|—)\s*"
 
 _EXPERIENCE_CONTEXT = re.compile(
-    r"experience|exp\b|yoe|work(?:ing)? in|in (?:the )?industry|professional|hands[- ]on|background|"
+    r"experience|exp\b|yoe|work(?:ing)? in|worked (?:as|in|on|at)|in (?:the )?industry|professional|hands[- ]on|background|"
     # "3-6 years in data science", "2+ years building backend systems" (real postings, 2026-11-07)
     r"years?\s+(?:in|as|of|building|working|developing|designing|delivering|shipping|writing|running|"
     r"leading|owning|managing)\s+(?!a row|age|growth|history|business|the (?:last|past))",
@@ -110,6 +110,20 @@ _NOT_EXPERIENCE = re.compile(
     r"(years? old|founded|in business|years? ago|runway|warranty|years? of (?:age|growth|history)|"
     r"annual|per year|/year|a year\b|each year|years? in a row|anniversary|company is \d)",
 )
+
+# Sentences about other people's experience (founders, leaders, mentors, the company).
+_OTHERS = re.compile(
+    r"\b(?:our|the|its)\s+(?:co-?)?founders?\b|\b(?:co-?)?founders?\s+(?:have|has|bring|with)\b|"
+    r"\b(?:our|the)\s+(?:ceo|cto|leadership(?: team)?|leaders|mentors?|senior (?:editors|engineers|researchers)|"
+    r"editors|advisors|management team)\b|\bwho (?:have|has|bring) (?:decades|\d)",
+)
+# ...unless the same sentence is about the applicant.
+_CANDIDATE = re.compile(r"\byou (?:have|bring|must|should|need|will need|are expected)\b|\byour (?:experience|background)|"
+                        r"candidates?|applicants?|we (?:are looking|need|want|require)|"
+                        r"must have|should have|required|requirements?")
+# Upper limits: "more than 1 year ... will not be considered", "must not have more than 12 months".
+_CAP = re.compile(r"will not be considered|won't be considered|not eligible|need not apply|"
+                  r"(?:must|should|can) ?not have more than|cannot have more than|no more than|not more than")
 
 _HISTORY_BEFORE = re.compile(r"(over|for|in|during) the (last|past)\s*$|\bsince\s*$|\bfor over\s*$")
 
@@ -129,6 +143,11 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(rf"\b(?:up ?to|upto|less than|under|max(?:imum)?(?: of)?)\s*{_NUM}\s*{_YEARS}"), "upto_years"),
     # "3 years of experience", "2 yrs experience", "1 year exp"
     (re.compile(rf"\b{_NUM}[\s-]*{_YEARS}\s*(?:of\s+)?(?:\w+\s+){{0,3}}?(?:experience|exp\b)"), "n_years_exp"),
+    # "minimum of 18 months", "at least 24 months", "18+ months" (2026-11-08 eval)
+    (re.compile(rf"\b(?:minimum(?: of)?|min\.?|at least|atleast)\s*{_NUM}\s*{_MONTHS}"), "min_months"),
+    (re.compile(rf"\b{_NUM}\s*(?:\+|plus|or more)\s*{_MONTHS}"), "min_months"),
+    (re.compile(rf"\b(?:more than|over)\s*{_NUM}\s*{_MONTHS}"), "min_months"),
+    (re.compile(rf"\b(?:up ?to|upto|less than|under|no more than|not more than|max(?:imum)?(?: of)?)\s*{_NUM}\s*{_MONTHS}"), "upto_months"),
     # "experience: 2 years", "experience of 3 years", "experience - 0 to 1 years" handled by range
     (re.compile(rf"(?:experience|exp)\s*(?:required|needed)?\s*(?:[:\-]|of)\s*{_NUM}\s*{_YEARS}"), "exp_colon_years"),
 ]
@@ -144,13 +163,19 @@ def _sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p and p.strip()]
 
 
-def extract_requirements(text: str) -> list[Requirement]:
-    """Find experience requirements stated in a text, with the clause they came from."""
+def extract_requirements(text: str, limit_for_caps: float = 1.0) -> list[Requirement]:
+    """Find experience requirements stated in a text, with the clause they came from. Upper limits
+    ("more than 1 year will not be considered") become (0, min(N, limit_for_caps)): they never exclude a fresher."""
     found: list[Requirement] = []
     seen_spans: set[tuple[int, int]] = set()
     for sentence in _sentences(fold(text)):
         if _NOT_EXPERIENCE.search(sentence) and not _EXPERIENCE_CONTEXT.search(sentence):
             continue
+        # "Our founders have 20+ years of experience": someone else's experience, not a demand on me.
+        if _OTHERS.search(sentence) and not _CANDIDATE.search(sentence):
+            continue
+        # "Candidates with more than 1 year ... will not be considered": an upper limit, not a minimum.
+        is_cap = _CAP.search(sentence) is not None
         occupied: list[tuple[int, int]] = []
         for pattern, kind in _PATTERNS:
             for m in pattern.finditer(sentence):
@@ -161,7 +186,7 @@ def extract_requirements(text: str) -> list[Requirement]:
                 # experience word nearby so "2-3 years contract" or "at least 2 years" of
                 # something else is not mistaken for one.
                 needs_context = kind in ("range_years", "range_months", "min_years",
-                                         "more_than_years", "upto_years")
+                                         "more_than_years", "upto_years", "min_months", "upto_months")
                 window = sentence[max(0, span[0] - 60): span[1] + 60]
                 if needs_context and not _EXPERIENCE_CONTEXT.search(window):
                     continue
@@ -173,6 +198,9 @@ def extract_requirements(text: str) -> list[Requirement]:
                 req = _to_requirement(kind, m)
                 if req is None:
                     continue
+                if is_cap and (req.max is None or req.min == 0):
+                    # An eligibility ceiling ("no more than 18 months") lets someone with 0 years apply.
+                    req = Requirement(0, min(req.min if req.max is None else req.max, limit_for_caps), False, "")
                 req.soft = bool(_SOFT.search(window))
                 req.evidence = sentence[max(0, span[0] - 40): span[1] + 40].strip()
                 key = (round(req.min * 100), round((req.max or -1) * 100))
@@ -202,6 +230,10 @@ def _to_requirement(kind: str, m: re.Match[str]) -> Requirement | None:
         return Requirement(_num(g[0]), None, False, "")
     if kind == "upto_years":
         return Requirement(0, _num(g[0]), False, "")
+    if kind == "min_months":
+        return Requirement(round(_num(g[0]) / 12, 2), None, False, "")
+    if kind == "upto_months":
+        return Requirement(0, round(_num(g[0]) / 12, 2), False, "")
     if kind in ("n_years_exp", "exp_colon_years"):
         n = _num(g[0])
         return Requirement(n, None if n > 0 else 0, False, "")
@@ -223,6 +255,13 @@ def _requirement_fits(req: Requirement, limit: float) -> bool | None:
 
 def _has_word(text: str, word: str) -> bool:
     return re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])", text) is not None
+
+
+_NO_FRESHERS = re.compile(
+    r"freshers?\s+(?:need not|should not|must not|cannot|can ?not|can't|do not|don't|won't|will not)\s+(?:apply|be considered)|"
+    r"\bno freshers\b|not (?:hiring|considering|open to|for|suitable for|looking for|accepting)\s+freshers|"
+    r"freshers? (?:are|is) not (?:eligible|considered)",
+)
 
 
 def classify(title: str, description: str | None, rules: FresherRules | None = None,
@@ -253,9 +292,14 @@ def classify(title: str, description: str | None, rules: FresherRules | None = N
     if is_intern and not converts and not rules.include_internships:
         return FresherVerdict(Decision.DROP, Confidence.HIGH, None, None, False,
                               ["internship without full-time conversion"], [])
+    # 2b. "Freshers need not apply" / "not hiring freshers": the word "fresher" here means the opposite.
+    if neg := _NO_FRESHERS.search(d):
+        return FresherVerdict(Decision.DROP, Confidence.HIGH, None, None, False,
+                              [f"posting excludes freshers: \"{neg.group(0)}\""], [])
+
     # 3. Explicit experience requirements (title first, then description). Read even for
     # intern-to-full-time roles: "AI Researcher Intern" asking for 2-3 years is not a fresher role.
-    reqs = extract_requirements(title) + (extract_requirements(description) if description else [])
+    reqs = extract_requirements(title, limit) + (extract_requirements(description, limit) if description else [])
     if is_intern and converts:
         too_high = [r for r in reqs if _requirement_fits(r, limit) is False]
         if too_high:

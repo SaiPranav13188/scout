@@ -233,3 +233,42 @@ def test_keep_phrases_match_whole_words_and_typo_years_still_count():
     assert "description says '0 years'" not in v.reasons and v.experience_unclear
     v = classify("Analyst", "0 years of experience needed; final-year students welcome.")
     assert v.decision == Decision.KEEP and not v.experience_unclear
+
+
+@pytest.mark.parametrize(("desc", "keep"), [
+    ("Freshers need not apply. We need someone who has shipped LLM products.", False),
+    ("We are not hiring freshers for this position.", False),
+    ("Freshers only; candidates with more than 1 year of work experience will not be considered.", True),
+    ("New grads should have no more than 18 months of professional experience.", True),
+    ("Applicants must not have more than 12 months of full-time work experience. 2026 graduates.", True),
+    ("Our founders have 20+ years of experience in fintech. Fresh graduates from the 2026 batch can apply.", True),
+    ("Our CTO has 15 years of experience and will mentor you. This is a role for fresh graduates.", True),
+    ("The hiring manager requires a minimum of 18 months of professional experience with LLM apps.", False),
+    ("You must have worked as a backend developer for at least 24 months.", False),
+    ("You bring 3 years of experience; our founders have 20 years in banking.", False),
+])
+def test_eval_patterns_2026_11_08(desc, keep):
+    """General patterns found by the labelled fresher eval (evals/fresher_labelled.jsonl)."""
+    assert (classify("AI Engineer", desc).decision == Decision.KEEP) is keep
+
+
+def test_fresher_quote_wordings_2026_11_08():
+    from scout_core.seniority import supports_fresher
+    for q in ("We are hiring an ML Engineer with 0-1 years of experience.",
+              "This position is ideal for candidates with 0 to 1 year of experience.",
+              "Applicants should be completing their degree in 2026 and must not have more than 12 months of full-time work experience."):
+        assert supports_fresher(q), q
+    for q in ("You need 2+ years of experience.", "Strong Python is required."):
+        assert not supports_fresher(q), q
+
+
+def test_labelled_fresher_sets_rules_never_show_an_experienced_job():
+    """evals/fresher_labelled.jsonl + fresher_heldout.jsonl: the rules alone must never show an
+    experienced or unclear posting (Gemini is the second reader on top; see `cli fresher-eval`)."""
+    import asyncio
+
+    from scout_core.fresher_eval import DATA, HELDOUT, metrics, run
+    for path in (DATA, HELDOUT):
+        m = metrics(asyncio.run(run(path=path)), lambda r: r.rules_show)
+        assert m.fp == 0, m.wrong
+        assert m.accuracy >= 0.95, m.wrong

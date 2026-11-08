@@ -1,0 +1,482 @@
+[
+ {
+  "id": "F01",
+  "label": "fresher",
+  "title": "Graduate Engineer Trainee - AI",
+  "rules_show": true,
+  "rules_reason": "title says 'graduate'; description says '2026 batch'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"This role is open to B.Tech / B.E. graduates of the 2026 batch; no prior work experience is required.\"",
+  "production_show": true
+ },
+ {
+  "id": "F02",
+  "label": "fresher",
+  "title": "Machine Learning Engineer - New Grad",
+  "rules_show": true,
+  "rules_reason": "title says 'new grad'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Corvid Labs is hiring new graduates to join our machine learning platform team in Bengaluru.\"",
+  "production_show": true
+ },
+ {
+  "id": "F03",
+  "label": "fresher",
+  "title": "Associate AI Engineer",
+  "rules_show": true,
+  "rules_reason": "states 0-1 years experience; title says 'associate'; description says 'freshers'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Freshers with strong projects in NLP or LLM applications are encouraged to apply.\"",
+  "production_show": true
+ },
+ {
+  "id": "F04",
+  "label": "fresher",
+  "title": "AI Engineer I",
+  "rules_show": true,
+  "rules_reason": "title says 'engineer i'; description says 'entry-level'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"AI Engineer I is our entry-level engineering role.\"",
+  "production_show": true
+ },
+ {
+  "id": "F05",
+  "label": "fresher",
+  "title": "Junior Data Scientist",
+  "rules_show": true,
+  "rules_reason": "states 0-1 years experience; title says 'junior'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"We welcome recent graduates; internships count as experience.\"",
+  "production_show": true
+ },
+ {
+  "id": "F06",
+  "label": "fresher",
+  "title": "Software Engineer - GenAI (Campus Hire 2026)",
+  "rules_show": true,
+  "rules_reason": "title says 'campus'; description says 'graduating in 2026'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Our 2026 campus hiring drive is open for the GenAI engineering team.\"",
+  "production_show": true
+ },
+ {
+  "id": "F07",
+  "label": "fresher",
+  "title": "AI/ML Intern (with PPO)",
+  "rules_show": true,
+  "rules_reason": "intern-to-full-time role",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Quill Robotics is offering a 6-month AI/ML internship for final-year students, with a pre-placement offer (PPO) for a full-time role based on performance.\"",
+  "production_show": true
+ },
+ {
+  "id": "F08",
+  "label": "fresher",
+  "title": "Applied AI Engineer",
+  "rules_show": true,
+  "rules_reason": "description says 'freshers'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Freshers welcome: this role is designed for engineers starting their careers.\"",
+  "production_show": true
+ },
+ {
+  "id": "F09",
+  "label": "fresher",
+  "title": "LLM Engineer - Early Career",
+  "rules_show": true,
+  "rules_reason": "states 0-1 years experience; title says 'early career'; description says 'early career'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Our Early Career programme is for engineers with 0-12 months of professional experience.\"",
+  "production_show": true
+ },
+ {
+  "id": "F10",
+  "label": "fresher",
+  "title": "Data Analyst - AI Products",
+  "rules_show": false,
+  "rules_reason": "requires 20+ years experience: \"our founders have 20+ years of experience in fintech and have built\"",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Fresh graduates from the 2025 or 2026 batch can apply.\"",
+  "production_show": false
+ },
+ {
+  "id": "F11",
+  "label": "fresher",
+  "title": "AI Support Engineer",
+  "rules_show": true,
+  "rules_reason": "description says 'no experience required'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"No experience required: we run an 8-week paid training before you go live with customers.\"",
+  "production_show": true
+ },
+ {
+  "id": "F12",
+  "label": "fresher",
+  "title": "Prompt Engineer (Entry Level)",
+  "rules_show": true,
+  "rules_reason": "states 0-1 years experience; title says 'entry level'; description says 'entry-level'",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: quote doesn't show it's open to freshers, left hidden",
+  "production_show": false
+ },
+ {
+  "id": "F13",
+  "label": "fresher",
+  "title": "Computer Vision Engineer - Fresher",
+  "rules_show": false,
+  "rules_reason": "requires 1+ years experience: \"candidates with more than 1 year of work experience will not be consider\"",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: quote doesn't show it's open to freshers, left hidden",
+  "production_show": false
+ },
+ {
+  "id": "F14",
+  "label": "fresher",
+  "title": "AI Engineer Trainee",
+  "rules_show": true,
+  "rules_reason": "title says 'trainee'; description says '2026 passouts'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Bytewise Solutions is hiring AI Engineer Trainees from the 2026 passout batch.\"",
+  "production_show": true
+ },
+ {
+  "id": "F15",
+  "label": "fresher",
+  "title": "Software Engineer, University Graduate - ML Infrastructure",
+  "rules_show": true,
+  "rules_reason": "title says 'graduate'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"This role is open to university graduates starting their careers.\"",
+  "production_show": true
+ },
+ {
+  "id": "F16",
+  "label": "fresher",
+  "title": "ML Engineer (0-1 yrs)",
+  "rules_show": true,
+  "rules_reason": "states 0-1 years experience",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: quote doesn't show it's open to freshers, left hidden",
+  "production_show": false
+ },
+ {
+  "id": "F17",
+  "label": "fresher",
+  "title": "AI Product Analyst",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"This role is designed for recent graduates who want to work at the intersection of product and AI.\"",
+  "production_show": true
+ },
+ {
+  "id": "F18",
+  "label": "fresher",
+  "title": "Data Scientist - Graduate Programme",
+  "rules_show": true,
+  "rules_reason": "title says 'graduate'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Northwind Bank's two-year Data Science Graduate Programme is for graduates finishing their degree in 2026.\"",
+  "production_show": true
+ },
+ {
+  "id": "F19",
+  "label": "fresher",
+  "title": "Backend Engineer - LLM Apps (Fresher)",
+  "rules_show": true,
+  "rules_reason": "states 0 years experience; title says 'fresher'; description says 'freshers'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"Experience: 0 years (freshers).\"",
+  "production_show": true
+ },
+ {
+  "id": "F20",
+  "label": "fresher",
+  "title": "AI Research Engineer - New Grad",
+  "rules_show": true,
+  "rules_reason": "title says 'new grad'",
+  "gemini": "fresher_ok",
+  "gemini_reason": "AI check: open to freshers: \"We are hiring new grads as AI Research Engineers.\"",
+  "production_show": true
+ },
+ {
+  "id": "E01",
+  "label": "experienced",
+  "title": "AI Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 3+ years experience: \"we are looking for an ai engineer with 3+ years of experience building machine learning\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"We are looking for an AI Engineer with 3+ years of experience building machine learning systems in production.\"",
+  "production_show": false
+ },
+ {
+  "id": "E02",
+  "label": "experienced",
+  "title": "Machine Learning Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 2+ years experience: \"requirements: minimum 2 years of hands-on experience with pytorch, ex\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Requirements: minimum 2 years of hands-on experience with PyTorch, experience deploying models to edge devices, and strong C++ or Python.\"",
+  "production_show": false
+ },
+ {
+  "id": "E03",
+  "label": "experienced",
+  "title": "AI Engineer (GIS)",
+  "rules_show": false,
+  "rules_reason": "requires 6+ years experience: \"required qualifications: 6+ years of progressive experience in data scien\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Required qualifications: 6+ years of progressive experience in Data Science, Machine Learning or Applied AI, with a minimum of 3 years in a leadership or princi\"",
+  "production_show": false
+ },
+ {
+  "id": "E04",
+  "label": "experienced",
+  "title": "Associate ML Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 1-3 years experience: \"1-3 years of experience required in building and\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"1-3 years of experience required in building and deploying credit-risk or fraud models.\"",
+  "production_show": false
+ },
+ {
+  "id": "E05",
+  "label": "experienced",
+  "title": "GenAI Developer",
+  "rules_show": false,
+  "rules_reason": "requires 2-4 years experience: \"experience: 2-4 yrs.\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Experience: 2-4 yrs.\"",
+  "production_show": false
+ },
+ {
+  "id": "E06",
+  "label": "experienced",
+  "title": "AI Engineer",
+  "rules_show": true,
+  "rules_reason": "description says 'freshers'",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Freshers need not apply.\"",
+  "production_show": false
+ },
+ {
+  "id": "E07",
+  "label": "experienced",
+  "title": "Data Scientist",
+  "rules_show": false,
+  "rules_reason": "requires 4-6 years experience: \"requirements: 4 to 6 years in data science or applied statistics,\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Requirements: 4 to 6 years in data science or applied statistics, experience with healthcare data, strong Python and SQL.\"",
+  "production_show": false
+ },
+ {
+  "id": "E08",
+  "label": "experienced",
+  "title": "Applied Scientist",
+  "rules_show": false,
+  "rules_reason": "requires 2+ years experience: \"mputer science or a related field, plus 2+ years of industry experience applying ml to s\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Qualifications: PhD in Machine Learning, Computer Science or a related field, plus 2+ years of industry experience applying ML to search or recommendations.\"",
+  "production_show": false
+ },
+ {
+  "id": "E09",
+  "label": "experienced",
+  "title": "Junior AI Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 2+ years experience: \"a junior role on our team, it requires 2 years of professional python development experience.\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Although this is a junior role on our team, it requires 2 years of professional Python development experience.\"",
+  "production_show": false
+ },
+ {
+  "id": "E10",
+  "label": "experienced",
+  "title": "AI Solutions Architect",
+  "rules_show": false,
+  "rules_reason": "title contains 'architect'",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Strong background in cloud architecture and enterprise integration is expected.\"",
+  "production_show": false
+ },
+ {
+  "id": "E11",
+  "label": "experienced",
+  "title": "MLOps Engineer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"You have proven experience running Kubernetes clusters in production, building CI/CD for machine learning models, and you have mentored other engineers.\"",
+  "production_show": false
+ },
+ {
+  "id": "E12",
+  "label": "experienced",
+  "title": "AI Engineer - Entry Level",
+  "rules_show": false,
+  "rules_reason": "requires 1.5+ years experience: \"despite the title, candidates must have 1.5+ years of experience building llm applications\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Despite the title, candidates must have 1.5+ years of experience building LLM applications in a professional setting.\"",
+  "production_show": false
+ },
+ {
+  "id": "E13",
+  "label": "experienced",
+  "title": "LLM Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 3+ years experience: \"we are hiring an llm engineer with at least three years building nlp systems.\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"We are hiring an LLM Engineer with at least three years building NLP systems.\"",
+  "production_show": false
+ },
+ {
+  "id": "E14",
+  "label": "experienced",
+  "title": "AI Researcher Intern",
+  "rules_show": false,
+  "rules_reason": "internship without full-time conversion",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"2-3 years of experience in Deep Learning, Machine Learning, or Applied AI Research.\"",
+  "production_show": false
+ },
+ {
+  "id": "E15",
+  "label": "experienced",
+  "title": "AI Product Manager",
+  "rules_show": false,
+  "rules_reason": "title contains 'manager'",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"You bring 5+ years of product management experience, including at least 2 years managing machine learning or AI products.\"",
+  "production_show": false
+ },
+ {
+  "id": "E16",
+  "label": "experienced",
+  "title": "Machine Learning Engineer II",
+  "rules_show": false,
+  "rules_reason": "title contains 'ii'",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Strong Python, experience with large datasets and production ML systems are required.\"",
+  "production_show": false
+ },
+ {
+  "id": "E17",
+  "label": "experienced",
+  "title": "Computer Vision Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 3+ years experience: \"experience required: 3 years.\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"Experience Required: 3 Years.\"",
+  "production_show": false
+ },
+ {
+  "id": "E18",
+  "label": "experienced",
+  "title": "Data Engineer - AI Platform",
+  "rules_show": false,
+  "rules_reason": "requires 5+ years experience: \"we are hiring a data engineer with over 5 years in data engineering, including spark, a\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"We are hiring a Data Engineer with over 5 years in data engineering, including Spark, Airflow and cloud data warehouses.\"",
+  "production_show": false
+ },
+ {
+  "id": "E19",
+  "label": "experienced",
+  "title": "Conversational AI Developer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"You must have worked as a backend developer for at least 24 months before applying.\"",
+  "production_show": false
+ },
+ {
+  "id": "E20",
+  "label": "experienced",
+  "title": "AI Engineer",
+  "rules_show": false,
+  "rules_reason": "requires 2+ years experience: \"we are looking for graduates with 2 years of relevant work experience after graduation in python backend or m\"",
+  "gemini": "needs_experience",
+  "gemini_reason": "AI check: asks for experience: \"We are looking for graduates with 2 years of relevant work experience after graduation in Python backend or machine learning roles.\"",
+  "production_show": false
+ },
+ {
+  "id": "U01",
+  "label": "unclear",
+  "title": "AI Engineer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "U02",
+  "label": "unclear",
+  "title": "Machine Learning Engineer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "U03",
+  "label": "unclear",
+  "title": "Data Scientist",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "U04",
+  "label": "unclear",
+  "title": "AI Developer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "U05",
+  "label": "unclear",
+  "title": "GenAI Engineer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "U06",
+  "label": "unclear",
+  "title": "Applied AI Engineer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "U07",
+  "label": "unclear",
+  "title": "NLP Engineer",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ },
+ {
+  "id": "U08",
+  "label": "unclear",
+  "title": "AI Engineer - Bengaluru",
+  "rules_show": false,
+  "rules_reason": "experience not stated",
+  "gemini": "unclear",
+  "gemini_reason": "AI check: description doesn't say whether freshers can apply",
+  "production_show": false
+ }
+]
