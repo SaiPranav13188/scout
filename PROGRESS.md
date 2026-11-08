@@ -26,12 +26,11 @@ Last updated: 2026-11-06
 
 ### Not done / not verified yet (honest list)
 
-- **Not run with real credentials:** Supabase login, Telegram sending, MongoDB Atlas. All code paths are tested
-  with mocks or local equivalents. Waiting for your accounts (docs/SETUP.md).
-- **Docker Compose and CI** files are written but **not executed** (Docker isn't installed on this machine and
-  the repo isn't on GitHub yet).
+- **MongoDB Atlas** not connected (raw payloads live only for the duration of a run). Supabase, Telegram,
+  Render and Vercel are live (see "Hosting, verified 2026-11-08" below).
+- **Docker Compose** is written but **not executed** (Docker isn't installed on this machine). Production
+  doesn't use it, so it stays a local convenience. CI runs on GitHub (see below).
 - **Playwright browser fallback** for verification is written but not exercised in tests.
-- **Playwright Test for the dashboard** (spec §4) not written yet; UI was checked with scripted screenshots.
 - **Adzuna plug-in** not built (settings toggle exists; moves to Phase 2 with the key).
 - Changing filter settings applies to **new** jobs only; already-seen jobs aren't re-evaluated yet.
 
@@ -58,9 +57,16 @@ discovery credited all of them to "Vector". Discovery now ignores sites linking 
 checks the Greenhouse board owner's name. The wrong rows were removed and jobs rebuilt (with your approval).
 Also fixed: remote jobs whose title names another country ("US Remote", "Spain") were shown as worldwide.
 
-**Not yet:** dashboard and API are not hosted (they run on the laptop), so Telegram buttons and
-`/today` etc. don't respond yet; Gmail alerts (Phase 2); MongoDB Atlas for raw payloads (runs on GitHub
-currently keep raw payloads only for the duration of the run).
+**Not yet:** MongoDB Atlas for raw payloads (runs keep raw payloads only for the duration of the run).
+
+### Hosting, verified 2026-11-08
+
+| Piece | Where | Checked |
+|---|---|---|
+| API | Render free web service `scout-api-bxpx.onrender.com` (Singapore) | `/healthz` 200; production env vars set; CORS allows only the Vercel dashboard and localhost |
+| Dashboard | Vercel `scout-ten-bice.vercel.app` | page 200; `NEXT_PUBLIC_API_URL` and Supabase keys set |
+| Telegram | webhook → Render `/telegram/webhook` | no delivery errors; a `/stats` update through the live webhook returned 200; a wrong secret returns 403 |
+| Schedule | Supabase pg_cron → `POST /internal/tick` every 10 min (also keeps Render awake); GitHub Actions as backup | running |
 
 ### Key finding from the real run
 
@@ -89,8 +95,8 @@ companies use Keka, Zoho Recruit or Darwinbox, which have no documented public j
 | Gemini provider (structured JSON, untrusted-data wrapping, injection detection, retries, per-model fallback) | done; models chosen from the live model list for this key |
 | Master resume v1: PDF text, contact details redacted locally, Gemini structuring, plain-code fact check | done; 41 skills, 3 projects, 0 unsupported items |
 | Match score (skills overlap + embeddings + Gemini rubric), shown in dashboard, Best-fit sort, Telegram | done; 33 jobs scored so far |
-| Labelling (apply/maybe/no) for the eval set | UI live; waiting for ~40 labels (0 so far) |
-| Eval: precision/recall vs labels | built: `cli match-eval` (precision/recall/false positives per score band, agreement, AUC vs the plain role-fit baseline); waiting for labels |
+| Labelling (apply/maybe/no) for the eval set | dashboard, Telegram 👍🤔👎, or Claude via the MCP server (`jobs_to_label`); waiting for ~40 labels (0 so far). 79 jobs scored, only 4 with full descriptions: label those first |
+| Eval: precision/recall vs labels | built: `cli match-eval` (precision/recall/false positives per score band, agreement, AUC vs the plain role-fit baseline, and an ablation: skills-only, embeddings-only, rubric-only and each pair, rebuilt offline from stored score parts); waiting for labels |
 | Resume Manager page (review/edit, upload PDF, versions) | done; checked in a browser against a local copy of resume v1 |
 | Re-scoring when the resume changes | done: each score stores the profile fingerprint it used; outdated scores are refreshed after new jobs, within the per-run limit |
 | Cloud scoring | waiting for GEMINI_API_KEY GitHub secret |
@@ -198,13 +204,25 @@ LinkedIn test pages (`apps/extension/test/browser_test.py`): all pass; the unpac
 | Langfuse tracing | not done: needs Langfuse keys (docs/SETUP.md); LLM calls, tokens and errors are recorded in agent_runs meanwhile |
 | Load / worker-crash tests (spec §13.8) | partly: retry-the-same-slot and failed-send-retry tests exist; no Redis restart test (production runs without Redis) |
 
-## Dashboard end-to-end test (2026-11-07)
+## Dashboard end-to-end test (Playwright Test, 2026-11-08)
 
-`uv run --with playwright python apps/web/e2e/run.py` starts its own Postgres, API and dashboard (never touches
-real data) and drives Chromium through Today, the job panel (tailored resume download, drafts), Pipeline (move a
-card, saved in the API), Resume (review → new version, autofill profile), Agent health, Settings (score bands),
-plus a phone-width check of every page. 15/15 pass. It found one real bug: the Agent health run list scrolled
-sideways on phones (fixed).
+`cd apps/web && npx playwright test` (spec: `apps/web/e2e/dashboard.spec.ts`). Its webServer,
+`e2e/stack.py`, builds a throwaway Postgres (`scout_e2e`, emptied and re-seeded each run), the API and the
+dashboard, so real data is never touched. 11 tests: Today, the job panel (tailored resume PDF download, drafts),
+Pipeline (move a card, saved in the API), Resume (review → new version, autofill profile), Agent health,
+Settings (score bands), and no sideways scroll at phone width on all five pages; every test also fails on an
+uncaught page error. 11/11 pass locally (twice in a row; ports freed afterwards). Runs in CI as the `e2e` job,
+with trace and screenshots uploaded on failure. (Ported from the earlier Python Playwright script, which found
+the Agent health phone-overflow bug on 2026-11-07.)
+
+## MCP server (2026-11-08)
+
+`apps/mcp` lets Claude (Claude Code in this repo via `.mcp.json`, or Claude Desktop) use Scout: `top_jobs`,
+`job_details`, `stats`, `pipeline`, `jobs_to_label` (read) and `set_job_status`, `label_job` (write, audited as
+`claude-mcp`). Same feed rules and services as the dashboard and Telegram; posting text comes back inside
+untrusted markers. Local stdio only, nothing exposed. 5 tests on real Postgres; checked over stdio against the
+live database (stats, top jobs, label picker, bad-id error). Writing the tests found a bug that was fixed:
+relabelling through MCP wiped the saved note.
 
 ## Phase 7 (AWS / Terraform): removed
 

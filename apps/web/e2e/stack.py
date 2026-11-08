@@ -1,18 +1,19 @@
-# ruff: noqa: S603, S607, S106 - a local test runner: fixed commands (uv, npx, cp) and fake test data only
-"""Dashboard end-to-end test (spec §4 "Playwright Test for the dashboard").
+# ruff: noqa: S603, S607, S106, S608 - a local test stack: fixed commands (uv, npx, cp) and fake test data only
+"""The isolated stack behind the dashboard end-to-end tests (Playwright Test: apps/web/e2e/*.spec.ts).
 
-Starts everything it needs on its own, never touching real data:
-  embedded Postgres (database "scout_e2e") -> migrations -> seed data
+Never touches real data. Builds and serves:
+  Postgres database "scout_e2e" (embedded pgserver, or E2E_DATABASE_URL in CI) -> migrations -> seed data
   -> API on :8021 (dev token) -> dashboard dev server on :3121 (from a temporary copy of apps/web,
      so it can run next to your own `next dev`)
-then drives a real Chromium through Today, the job panel, Pipeline, Resume, Agent health and Settings.
+and keeps running until stopped. Playwright starts it as its webServer (playwright.config.ts):
 
-  uv run --with playwright python apps/web/e2e/run.py [path-to-chromium]
+  cd apps/web && npx playwright test
 """
 
 import asyncio
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -25,12 +26,6 @@ import httpx
 ROOT = Path(__file__).resolve().parents[3]
 WEB = ROOT / "apps" / "web"
 API_PORT, WEB_PORT, TOKEN = 8021, 3121, "e2e-dev-token"
-RESULTS: list[tuple[bool, str]] = []
-
-
-def check(ok: bool, what: str) -> None:
-    RESULTS.append((bool(ok), what))
-    print(("PASS " if ok else "FAIL ") + what, flush=True)
 
 
 def wait_http(url: str, headers: dict | None = None, timeout: float = 120) -> None:
@@ -94,94 +89,73 @@ async def seed(db_url: str) -> None:
         await s.commit()
 
 
-def drive(chromium: str | None) -> None:
-    from playwright.sync_api import sync_playwright
+def _db_url() -> str:
+    if url := os.environ.get("E2E_DATABASE_URL"):
+        return url
+    return subprocess.run([sys.executable, str(ROOT / "scripts" / "devdb.py"), "--db", "scout_e2e"],
+                          capture_output=True, text=True, check=True).stdout.strip().splitlines()[-1]
 
-    base = f"http://localhost:{WEB_PORT}"
-    errors: list[str] = []
-    with sync_playwright() as p:
-        b = p.chromium.launch(executable_path=chromium) if chromium else p.chromium.launch()
-        pg = b.new_context(viewport={"width": 1400, "height": 1000}, accept_downloads=True).new_page()
-        pg.on("pageerror", lambda e: errors.append(str(e)))
 
-        pg.goto(base + "/")
-        pg.get_by_text("AI Engineer", exact=True).first.wait_for(timeout=60000)
-        check(pg.get_by_text("Machine Learning Engineer (Fresher)").count() > 0, "Today lists confirmed fresher AI jobs")
-        pg.get_by_text("AI Engineer", exact=True).first.click()
-        pg.get_by_text("Tailored resume", exact=True).wait_for(timeout=15000)
-        with pg.expect_download() as dl:
-            pg.get_by_role("button", name="PDF").first.click()
-        check(dl.value.suggested_filename.endswith(".pdf"), f"tailored resume downloads ({dl.value.suggested_filename})")
-        check(pg.get_by_role("button", name="Draft messages").count() == 1, "message drafts offered in the job panel")
-        pg.keyboard.press("Escape")
+def _reset(db_url: str) -> None:
+    """Start from empty tables, so every run sees exactly the seed data."""
+    from sqlalchemy import text
 
-        pg.goto(base + "/pipeline")
-        pg.get_by_text("follow-up is due").wait_for(timeout=30000)
-        pg.get_by_label("Status of GenAI Engineer - New Grad").select_option("interview")
-        pg.wait_for_timeout(1500)
-        check("GenAI Engineer" in pg.get_by_role("region", name="Interview").inner_text(), "Pipeline: move to Interview")
-        apps = httpx.get(f"http://localhost:{API_PORT}/api/applications", headers={"Authorization": f"Bearer {TOKEN}"}).json()
-        check(apps and apps[0]["status"] == "interview", "the move is saved in the API")
+    from scout_core.db.session import make_engine
 
-        pg.goto(base + "/resume")
-        pg.get_by_text("not reviewed yet").wait_for(timeout=30000)
-        check(pg.get_by_role("button", name="Autofill profile").count() == 1, "Resume page offers the autofill profile")
-        pg.get_by_role("button", name="Looks right, mark reviewed").click()
-        pg.get_by_text("Saved as version 2").wait_for(timeout=15000)
-        check(True, "review saves a new resume version")
-
-        pg.goto(base + "/health")
-        pg.get_by_text("Gemini usage, last 24 h").wait_for(timeout=30000)
-        check(pg.get_by_text("Job ingestion").count() > 0 and pg.get_by_text("Next run").count() > 0, "Agent health shows workers and next runs")
-
-        pg.goto(base + "/settings")
-        pg.get_by_text("Match score", exact=True).wait_for(timeout=30000)
-        check(pg.get_by_text("Top match from").count() == 1, "Settings has editable score bands")
-
-        pg.set_viewport_size({"width": 390, "height": 844})
-        for path in ("/", "/pipeline", "/resume", "/health", "/settings"):
-            pg.goto(base + path)
-            pg.wait_for_timeout(1200)
-            check(pg.evaluate("document.documentElement.scrollWidth") <= 390, f"no sideways scroll on a phone: {path}")
-        b.close()
-    check(not errors, f"no page errors ({errors[:2]})")
+    async def go():
+        engine = make_engine(db_url, pooled=False)
+        async with engine.begin() as conn:
+            tables = (await conn.execute(text(
+                "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'alembic_version'"))).scalars().all()
+            await conn.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
+        await engine.dispose()
+    asyncio.run(go())
 
 
 def main() -> int:
-    chromium = sys.argv[1] if len(sys.argv) > 1 else None
-    db_url = subprocess.run([sys.executable, str(ROOT / "scripts" / "devdb.py"), "--db", "scout_e2e"],
-                            capture_output=True, text=True, check=True).stdout.strip().splitlines()[-1]
+    db_url = _db_url()
     env = {**os.environ, "DATABASE_URL": db_url}
     subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=ROOT / "packages" / "shared", env=env,
                    check=True, capture_output=True)
+    _reset(db_url)
     asyncio.run(seed(db_url))
     tmp = Path(tempfile.mkdtemp(prefix="scout-e2e-"))
     procs: list[subprocess.Popen] = []
+    stop = {"now": False}
+    signal.signal(signal.SIGTERM, lambda *_: stop.update(now=True))
+    signal.signal(signal.SIGINT, lambda *_: stop.update(now=True))
     try:
         api_env = {**env, "ENV": "development", "DEV_AUTH_TOKEN": TOKEN, "CORS_ORIGINS": f"http://localhost:{WEB_PORT}",
                    "GEMINI_API_KEY": "", "TELEGRAM_BOT_TOKEN": "", "LANGFUSE_PUBLIC_KEY": ""}
         procs.append(subprocess.Popen([sys.executable, "-m", "uvicorn", "scout_api.main:app", "--port", str(API_PORT)],
                                       cwd=ROOT / "apps" / "api", env=api_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-        for item in ("src", "public", "package.json", "tsconfig.json", "next.config.ts", "components.json", "next-env.d.ts", "node_modules"):
-            src = WEB / item
-            if not src.exists():
-                continue
-            if subprocess.run(["cp", "-Rc", str(src), str(tmp)], capture_output=True).returncode != 0:  # APFS clone; fall back to copy
-                (shutil.copytree if src.is_dir() else shutil.copy2)(src, tmp / item)
+        web_dir = WEB if os.environ.get("CI") else tmp  # CI: nothing else runs, so serve apps/web in place
+        if web_dir is tmp:
+            for item in ("src", "public", "package.json", "tsconfig.json", "next.config.ts", "components.json",
+                         "next-env.d.ts", "node_modules"):
+                src = WEB / item
+                if not src.exists():
+                    continue
+                if subprocess.run(["cp", "-Rc", str(src), str(tmp)], capture_output=True).returncode != 0:  # APFS clone
+                    (shutil.copytree if src.is_dir() else shutil.copy2)(src, tmp / item)
         web_env = {**os.environ, "NEXT_PUBLIC_API_URL": f"http://localhost:{API_PORT}", "NEXT_PUBLIC_DEV_AUTH_TOKEN": TOKEN,
                    "NEXT_PUBLIC_SUPABASE_URL": ""}
-        procs.append(subprocess.Popen(["npx", "next", "dev", "-p", str(WEB_PORT)], cwd=tmp, env=web_env,
+        procs.append(subprocess.Popen(["npx", "next", "dev", "-p", str(WEB_PORT)], cwd=web_dir, env=web_env,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         wait_http(f"http://localhost:{API_PORT}/healthz")
-        wait_http(f"http://localhost:{WEB_PORT}/")
-        drive(chromium)
+        print(f"e2e stack ready: dashboard http://localhost:{WEB_PORT}, API http://localhost:{API_PORT}", flush=True)
+        while not stop["now"] and all(p.poll() is None for p in procs):
+            time.sleep(0.5)
+        return 0 if stop["now"] else 1  # a server died on its own: fail loudly
     finally:
         for proc in procs:
             proc.terminate()
+        for proc in procs:
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
         shutil.rmtree(tmp, ignore_errors=True)
-    failed = [w for ok, w in RESULTS if not ok]
-    print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} passed" + (f"; FAILED: {failed}" if failed else ""))
-    return 1 if failed else 0
 
 
 if __name__ == "__main__":

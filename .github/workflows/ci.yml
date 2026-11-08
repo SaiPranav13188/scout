@@ -45,3 +45,43 @@ jobs:
       - run: npm run build
       - name: Autofill extension rules
         run: node --test ../extension/test/fields.test.js
+
+  e2e:
+    # Dashboard end-to-end (Playwright Test): seeded Postgres -> API -> dashboard -> Chromium.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: scout
+          POSTGRES_PASSWORD: scout
+          POSTGRES_DB: scout_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U scout" --health-interval 5s --health-retries 10
+    env:
+      E2E_DATABASE_URL: postgresql+asyncpg://scout:scout@localhost:5432/scout_e2e
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: uv sync --frozen
+        working-directory: .
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7
