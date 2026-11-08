@@ -8,6 +8,8 @@ profile, outlines every field it touched, and leaves the rest to you. **It never
     uv run python -m scout_worker.cli extension-build --last-name Bandaru
 
 builds a personal copy in `private/scout-autofill` (never committed) with your profile and resume PDF inside.
+Add `--pdf PATH` to attach a specific PDF; it is uploaded under that file's own name (or `--file-name NAME`).
+After rebuilding, press the reload ↻ icon on the extension in `chrome://extensions` to load the new copy.
 In Chrome: `chrome://extensions` → **Developer mode** on → **Load unpacked** → choose `private/scout-autofill`.
 Nothing to import: it loads your details the first time you open it.
 

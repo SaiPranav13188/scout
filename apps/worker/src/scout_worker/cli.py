@@ -12,7 +12,7 @@
   uv run python -m scout_worker.cli resume-parse private/resume.pdf
   uv run python -m scout_worker.cli score 10                 # score up to 10 feed jobs now
   uv run python -m scout_worker.cli resume-backfill private/resume.pdf [--apply]  # one-time upgrade
-  uv run python -m scout_worker.cli extension-build --last-name Bandaru   # personal extension copy in private/
+  uv run python -m scout_worker.cli extension-build --last-name Bandaru [--pdf PATH] [--file-name NAME]  # personal extension copy in private/
   uv run python -m scout_worker.cli setup-timer                # Supabase timer: run Scout every 10 min
   uv run python -m scout_worker.cli add-india-boards          # India hiring companies' public boards
   uv run python -m scout_worker.cli seniority-check 40       # Gemini reads "experience unclear" jobs
@@ -85,7 +85,16 @@ async def _active_resume_row():
         return await active_resume(s)
 
 
-def extension_build(out_dir: str, last_name: str | None, city: str | None, pdf: str | None) -> None:
+def upload_name(pdf: Path, full_name: str | None, explicit: str | None = None) -> str:
+    """The file name employers see when the extension attaches my resume: --file-name if given, otherwise
+    the PDF's own name (as I saved it), or "<Full_Name>_Resume.pdf" for the generic private/resume.pdf."""
+    name = (explicit or "").strip() or (pdf.name if pdf.name.lower() != "resume.pdf" else
+                                         f"{(full_name or 'Resume').replace(' ', '_')}_Resume.pdf")
+    return name if name.lower().endswith(".pdf") else name + ".pdf"
+
+
+def extension_build(out_dir: str, last_name: str | None, city: str | None, pdf: str | None,
+                    file_name: str | None = None) -> None:
     """A personal copy of the Chrome extension with my profile and resume already inside (private/, never committed)."""
     import shutil
 
@@ -104,7 +113,7 @@ def extension_build(out_dir: str, last_name: str | None, city: str | None, pdf: 
     resume = Path(pdf) if pdf else root / "private" / "resume.pdf"
     if resume.exists():
         shutil.copy2(resume, out / "preset" / "resume.pdf")
-        profile["resume_file_name"] = f"{(profile.get('full_name') or 'Resume').replace(' ', '_')}_Resume.pdf"
+        profile["resume_file_name"] = upload_name(resume, profile.get("full_name"), file_name)
     answers_file = root / "private" / "autofill_answers.json"
     if answers_file.exists():
         profile["answers"] = json.loads(answers_file.read_text())
@@ -115,7 +124,7 @@ def extension_build(out_dir: str, last_name: str | None, city: str | None, pdf: 
     profile["built_at"] = _dt.now(UTC).isoformat(timespec="seconds")
     (out / "preset" / "profile.json").write_text(json.dumps(profile, indent=2))
     print(f"Built {out}\n  profile: {profile['full_name']} · {profile['email']} · {profile['school']}"
-          f"\n  resume: {'attached' if resume.exists() else 'none'}"
+          f"\n  resume: {('attached as ' + profile['resume_file_name']) if resume.exists() else 'none'}"
           f"\n  saved answers: {len(profile.get('answers') or {})}"
           "\nIn Chrome: chrome://extensions → Developer mode → Load unpacked → choose that folder.")
 
@@ -226,7 +235,8 @@ def main() -> None:
         print(json.dumps(asyncio.run(work.resume_backfill(pdf, apply="--apply" in args)), indent=2, default=str))
     elif cmd == "extension-build":
         opt = lambda flag: args[args.index(flag) + 1] if flag in args else None  # noqa: E731
-        extension_build(opt("--out") or "private/scout-autofill", opt("--last-name"), opt("--city"), opt("--pdf"))
+        extension_build(opt("--out") or "private/scout-autofill", opt("--last-name"), opt("--city"), opt("--pdf"),
+                        opt("--file-name"))
     elif cmd == "setup-timer":
         if "--remove" in args:
             asyncio.run(remove_timer())

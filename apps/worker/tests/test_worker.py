@@ -437,3 +437,12 @@ async def test_job_found_overnight_is_sent_after_quiet_hours(session, db_url, mo
     await work.run_instant_alerts()
     await session.refresh(job)
     assert job.notified_at is not None and sent.call_count >= 2  # header + the job
+
+
+def test_extension_upload_name_keeps_my_pdf_name():
+    from pathlib import Path
+
+    from scout_worker.cli import upload_name
+    assert upload_name(Path("/x/saipranav_resume_7 (1).pdf"), "Sai Pranav Bandaru") == "saipranav_resume_7 (1).pdf"
+    assert upload_name(Path("private/resume.pdf"), "Sai Pranav Bandaru") == "Sai_Pranav_Bandaru_Resume.pdf"
+    assert upload_name(Path("/x/a.pdf"), "X", "Bandaru CV") == "Bandaru CV.pdf"
