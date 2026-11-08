@@ -54,13 +54,26 @@ def has_full_posting(source: str) -> bool:
     return not source.endswith("_alert")
 
 
-def require_full_posting(source: str, verdict: FresherVerdict) -> FresherVerdict:
-    """My rule (2026-11-08): a job counts as entry-level only if the WHOLE posting was read and says so.
-    A snippet can still drop a job ("3 years of exp"), but it can never confirm one."""
-    if has_full_posting(source) or verdict.decision == Decision.DROP or verdict.experience_unclear:
+SNIPPET_ONLY = "only a title or snippet from an email alert; the full posting couldn't be read"
+
+
+NO_DESCRIPTION = "the job board gave no description to read"
+
+
+def require_full_posting(source: str, verdict: FresherVerdict, description: str | None = None) -> FresherVerdict:
+    """My rule (2026-11-08): a job is judged only on its WHOLE posting. Email alerts carry a title or a
+    one-line snippet, so their jobs are left out entirely (not even listed as "experience unclear"):
+    a snippet can't show what the posting asks for. A snippet that already asks for experience still
+    gives that as the reason."""
+    if verdict.decision == Decision.DROP:
         return verdict
-    return replace(verdict, confidence=Confidence.LOW, experience_unclear=True,
-                   reasons=["only an email snippet was available, the full posting wasn't read", *verdict.reasons])
+    if not has_full_posting(source):
+        reason = SNIPPET_ONLY
+    elif not (description or "").strip():  # a board listing with no text at all is just a title
+        reason = NO_DESCRIPTION
+    else:
+        return verdict
+    return replace(verdict, decision=Decision.DROP, confidence=Confidence.HIGH, reasons=[reason, *verdict.reasons])
 
 
 AWAITING_SECOND_READING = "rules found it entry-level; waiting for the full-text check"
@@ -92,7 +105,7 @@ def evaluate_job(
             or (job.description_text and remote_restriction(job.description_text))):
         loc = LocationInfo(LocationBucket.REMOTE_RESTRICTED, (), True)
     fresher = classify(job.title, job.description_text, fresher_rules, job.employment_type)
-    fresher = require_full_posting(job.source, fresher)
+    fresher = require_full_posting(job.source, fresher, job.description_text)
     if (fresher_rules or FresherRules()).second_reading:
         fresher = await_second_reading(fresher)
     relevance = classify_role(job.title, job.description_text, relevance_rules)

@@ -685,7 +685,7 @@ async def recheck_feed(apply: bool = False) -> dict:
                 if apply:
                     job.description = None
             desc = None if job.description == INVENTED_LINKEDIN_TEXT else job.description
-            v = require_full_posting(job.source, classify(job.title, desc, fresher_rules, job.employment_type))
+            v = require_full_posting(job.source, classify(job.title, desc, fresher_rules, job.employment_type), desc)
             if fresher_rules.second_reading:
                 v = await_second_reading(v)
             if v.decision == Decision.DROP:

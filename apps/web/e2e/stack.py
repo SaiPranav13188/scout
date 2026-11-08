@@ -137,7 +137,16 @@ def main() -> int:
                 if not src.exists():
                     continue
                 if subprocess.run(["cp", "-Rc", str(src), str(tmp)], capture_output=True).returncode != 0:  # APFS clone
-                    (shutil.copytree if src.is_dir() else shutil.copy2)(src, tmp / item)
+                    # The clone can fail part-way (e.g. on a broken link): start the plain copy from scratch.
+                    dest = tmp / item
+                    if dest.is_dir():
+                        shutil.rmtree(dest, ignore_errors=True)
+                    elif dest.exists():
+                        dest.unlink()
+                    if src.is_dir():
+                        shutil.copytree(src, dest, symlinks=True)
+                    else:
+                        shutil.copy2(src, dest)
         web_env = {**os.environ, "NEXT_PUBLIC_API_URL": f"http://localhost:{API_PORT}", "NEXT_PUBLIC_DEV_AUTH_TOKEN": TOKEN,
                    "NEXT_PUBLIC_SUPABASE_URL": ""}
         procs.append(subprocess.Popen(["npx", "next", "dev", "-p", str(WEB_PORT)], cwd=web_dir, env=web_env,

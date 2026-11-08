@@ -255,9 +255,11 @@ async def test_unclear_experience_hidden_unless_asked(client, session):
     from scout_core.pipeline.evaluate import Preferences
     await _seed(session)
     company = await get_or_create_company(session, name="Acme AI", website=None, source="test")
+    # A full posting that never states the experience level (title-only alert jobs are left out entirely).
     await store_jobs(session, [NormalizedJob(
-        source="linkedin_alert", source_job_id="9", company_name="Acme AI", title="Machine Learning Engineer",
-        locations=["Bengaluru"], apply_url="https://www.linkedin.com/jobs/view/9/")],
+        source="lever", source_job_id="9", company_name="Acme AI", title="Machine Learning Engineer",
+        description_text="Build LLM agents and RAG pipelines in Python. You will ship features with the team.",
+        locations=["Bengaluru"], apply_url="https://jobs.lever.co/acme/9", board_token="acme")],
         company=company, fresher_rules=FresherRules(second_reading=False), relevance_rules=RelevanceRules(), prefs=Preferences())
     await session.commit()
     default = (await client.get("/api/jobs", headers=_auth())).json()

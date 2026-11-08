@@ -119,7 +119,8 @@ def test_internshala_format():
     # "3 days ago" on the card becomes an estimated posting time 3 days before the email.
     assert job.posted_at_kind == "relative_estimate" and (NOW - job.posted_at).days == 3
     assert intern.posted_at is None  # that card states no date
-    assert evaluate_job(intern).keep  # job offer after the internship counts as conversion
+    # A card is only a snippet: since 2026-11-08 snippet-only jobs are left out (full posting not read).
+    assert not evaluate_job(intern).keep
 
 
 def test_internshala_interview_invite_ignored():
@@ -191,8 +192,8 @@ def test_linkedin_entry_level_filter_is_never_proof():
               "keywords=AI%20Engineer", "keywords=x&f_E=4"):
         job = alert(q)
         assert job.description_text is None, q  # nothing invented
-        v = evaluate_job(job).fresher
-        assert v.experience_unclear is True and v.confidence.value == "low", q
+        ev = evaluate_job(job)
+        assert not ev.keep and "couldn't be read" in ev.fresher.reasons[0], q  # title only: left out
     assert alert("keywords=ai%20engineer&f_E=1%2C2").extra["entry_level_alert"] is True  # kept for information
 
 
@@ -208,13 +209,12 @@ def test_snippets_never_confirm_entry_level_but_can_reject():
                              apply_url="https://example.com/job/1")
 
     rules = FresherRules()
-    # A snippet that sounds fresher-friendly is not enough.
+    # A snippet that sounds fresher-friendly is not enough: snippet-only jobs are left out entirely.
     for src, desc, kind in (("internshala_alert", "Job offer upto ₹6LPA post internship", "Intern"),
                             ("instahyre_alert", "Freshers welcome. Python, LLM.", None),
                             ("wellfound_alert", "0 years of experience required.", None)):
-        v = evaluate_job(job(src, desc, employment_type=kind), fresher_rules=rules).fresher
-        assert v.experience_unclear is True and v.confidence.value == "low", src
-        assert "full posting wasn't read" in v.reasons[0]
+        ev = evaluate_job(job(src, desc, employment_type=kind), fresher_rules=rules)
+        assert not ev.keep and "couldn't be read" in ev.fresher.reasons[0], src
     # A snippet can still reject.
     assert evaluate_job(job("wellfound_alert", "4 years of experience required.")).keep is False
     # A full company-board posting that says so passes the rules, then waits for the second reader
@@ -224,3 +224,32 @@ def test_snippets_never_confirm_entry_level_but_can_reject():
     v = evaluate_job(job("greenhouse", "We hire freshers from the 2026 batch. " * 5),
                      fresher_rules=FresherRules(second_reading=False)).fresher
     assert v.experience_unclear is False and v.confidence.value == "high"
+
+
+def test_linkedin_section_footer_is_not_a_job():
+    """Real 2026-11 layout: the 'other alerts' section starts right after the first section's footer."""
+    text = ("Your job alert for GenAI Engineer in India\n\nAI Engineer\nAcme AI\nBengaluru\n"
+            "View job: https://www.linkedin.com/comm/jobs/view/111/?trk=x\n\n"
+            "---------------------------------------------------------\n  \n"
+            "See all jobs on LinkedIn:  https://www.linkedin.com/comm/jobs/search-results/?keywords=GenAI+Engineer\n\n"
+            "New jobs from your other alerts\n            \nJobs in Hyderabad\n        \n"
+            "Customer Support Executive (Voice and Chat) – (Exp: 0-1 year)\nNovetum\nHyderabad\n"
+            "Apply with resume & profile\n"
+            "View job: https://www.linkedin.com/comm/jobs/view/4487318631/?trackingId=x\n\n"
+            "---------------------------------------------------------\n"
+            "See all jobs https://www.linkedin.com/jobs/search-results/?k=1\nEdit alert https://www.linkedin.com/jobs/jam/manage/1\n\n"
+            "ML Engineer\nBeta Labs\nPune\nView job: https://www.linkedin.com/comm/jobs/view/222/\n")
+    _, jobs = parse_alert(_msg("LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>", "x", text=text))
+    got = [(j.title, j.company_name, j.location) for j in jobs]
+    assert got == [("AI Engineer", "Acme AI", "Bengaluru"),
+                   ("Customer Support Executive (Voice and Chat) – (Exp: 0-1 year)", "Novetum", "Hyderabad"),
+                   ("ML Engineer", "Beta Labs", "Pune")]
+
+
+def test_board_job_without_description_is_left_out():
+    from scout_core.pipeline.evaluate import evaluate_job
+    from scout_core.types import NormalizedJob
+    job = NormalizedJob(source="lever", source_job_id="1", company_name="100ms", title="Security Engineer - AI Agents",
+                        description_text=None, locations=["Bengaluru"], apply_url="https://jobs.lever.co/x/1")
+    ev = evaluate_job(job)
+    assert not ev.keep and "no description" in ev.fresher.reasons[0]

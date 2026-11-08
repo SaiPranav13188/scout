@@ -52,6 +52,14 @@ def _strip_query(url: str) -> str:
 
 # ------------------------------------------------------------------ LinkedIn
 
+# Email chrome that can sit above the first job of a section: "See all jobs on LinkedIn: <url>",
+# "Edit alert <url>", "New jobs from your other alerts", "Jobs in Hyderabad" (2026-11-08: these
+# became job titles / companies of 12 fake jobs).
+_LI_CHROME = re.compile(
+    r"^(see all jobs|edit alert|new jobs from your other alerts|new jobs match your preferences|manage alerts|"
+    r"jobs in [^\n]{1,60}$|your job alert for)|https?://",
+    re.IGNORECASE)
+
 _LI_BADGES = re.compile(
     r"^(apply with resume|easy apply|actively recruiting|be an early applicant|promoted|"
     r"\d+ (connections?|school alum|alumni)|.*connections? work here|.*alumni work here|.*school alumni)",
@@ -98,7 +106,7 @@ def parse_linkedin(msg: EmailMessage) -> list[NormalizedJob]:
             continue
         job_id = m.group(1)
         lines = [ln.strip() for ln in block[: m.start()].splitlines() if ln.strip()]
-        lines = [ln for ln in lines if not ln.lower().startswith("your job alert for") and not _LI_BADGES.match(ln)]
+        lines = [ln for ln in lines if not _LI_CHROME.search(ln) and not _LI_BADGES.match(ln)]
         if len(lines) < 2:
             continue
         title, company = lines[0], lines[1]
