@@ -506,6 +506,7 @@ async def check_unclear_experience(llm, limit: int = 15) -> dict:
         return (await s.execute(visible_feed_query(include_unclear=True).where(
             Job.status == ApplicationStatus.DISCOVERED, Job.experience_unclear.is_(True),
             Job.experience_corrected_by_me.is_not(True), func.length(Job.description) > 300,
+            ~Job.source.like("%\\_alert", escape="\\"),  # email snippets are never the whole posting
             ~cast(Job.fresher_reasons, Text).contains(MARK))
             .order_by(Job.relevance_score.desc(), Job.first_seen_at.desc()).limit(limit)
             .with_only_columns(Job.id, Job.title, Job.description))).all()
@@ -663,6 +664,7 @@ async def recheck_feed(apply: bool = False) -> dict:
     stored. Jobs I corrected by hand are left alone. Dry run unless apply=True.
     """
     from scout_core.filters.fresher import Decision, classify
+    from scout_core.pipeline.evaluate import require_full_posting
     from scout_core.seniority import MARK
     from scout_core.settings_store import load_rules
 
@@ -680,7 +682,7 @@ async def recheck_feed(apply: bool = False) -> dict:
                 if apply:
                     job.description = None
             desc = None if job.description == INVENTED_LINKEDIN_TEXT else job.description
-            v = classify(job.title, desc, fresher_rules, job.employment_type)
+            v = require_full_posting(job.source, classify(job.title, desc, fresher_rules, job.employment_type))
             if v.decision == Decision.DROP:
                 dropped.append(f"{job.title} @ {job.company_name}: {v.reasons[0]}"[:160])
                 if apply:

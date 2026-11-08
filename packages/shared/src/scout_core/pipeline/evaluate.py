@@ -4,10 +4,10 @@ Output is everything the jobs table needs except identity/dedupe, plus a keep/dr
 with human-readable reasons (so "why didn't I see job X?" always has an answer).
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
-from scout_core.filters.fresher import Decision, FresherRules, FresherVerdict, classify
+from scout_core.filters.fresher import Confidence, Decision, FresherRules, FresherVerdict, classify
 from scout_core.filters.relevance import Relevance, RelevanceRules, classify_role
 from scout_core.normalize import (
     LocationBucket,
@@ -48,6 +48,21 @@ class Evaluation:
     posted_at: datetime | None
 
 
+def has_full_posting(source: str) -> bool:
+    """Email alerts (LinkedIn, Wellfound, Instahyre, Internshala...) carry a title or a one-line snippet,
+    never the whole posting. Company boards (Greenhouse, Lever, Ashby) give the complete description."""
+    return not source.endswith("_alert")
+
+
+def require_full_posting(source: str, verdict: FresherVerdict) -> FresherVerdict:
+    """My rule (2026-11-08): a job counts as entry-level only if the WHOLE posting was read and says so.
+    A snippet can still drop a job ("3 years of exp"), but it can never confirm one."""
+    if has_full_posting(source) or verdict.decision == Decision.DROP or verdict.experience_unclear:
+        return verdict
+    return replace(verdict, confidence=Confidence.LOW, experience_unclear=True,
+                   reasons=["only an email snippet was available, the full posting wasn't read", *verdict.reasons])
+
+
 def evaluate_job(
     job: NormalizedJob,
     *,
@@ -66,6 +81,7 @@ def evaluate_job(
             or (job.description_text and remote_restriction(job.description_text))):
         loc = LocationInfo(LocationBucket.REMOTE_RESTRICTED, (), True)
     fresher = classify(job.title, job.description_text, fresher_rules, job.employment_type)
+    fresher = require_full_posting(job.source, fresher)
     relevance = classify_role(job.title, job.description_text, relevance_rules)
     trust = evaluate(source=job.source, apply_url=job.apply_url, company_website=company_website,
                      description=job.description_text, in_yc_directory=in_yc_directory,

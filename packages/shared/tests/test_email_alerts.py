@@ -194,3 +194,29 @@ def test_linkedin_entry_level_filter_is_never_proof():
         v = evaluate_job(job).fresher
         assert v.experience_unclear is True and v.confidence.value == "low", q
     assert alert("keywords=ai%20engineer&f_E=1%2C2").extra["entry_level_alert"] is True  # kept for information
+
+
+def test_snippets_never_confirm_entry_level_but_can_reject():
+    """2026-11-08 rule: entry-level only when the whole posting was read. Email alerts carry snippets."""
+    from scout_core.filters.fresher import FresherRules
+    from scout_core.pipeline.evaluate import evaluate_job
+    from scout_core.types import NormalizedJob
+
+    def job(source, desc, title="AI Engineer", employment_type=None):
+        return NormalizedJob(source=source, source_job_id="1", company_name="Acme", title=title,
+                             description_text=desc, locations=["Bengaluru"], employment_type=employment_type,
+                             apply_url="https://example.com/job/1")
+
+    rules = FresherRules()
+    # A snippet that sounds fresher-friendly is not enough.
+    for src, desc, kind in (("internshala_alert", "Job offer upto ₹6LPA post internship", "Intern"),
+                            ("instahyre_alert", "Freshers welcome. Python, LLM.", None),
+                            ("wellfound_alert", "0 years of experience required.", None)):
+        v = evaluate_job(job(src, desc, employment_type=kind), fresher_rules=rules).fresher
+        assert v.experience_unclear is True and v.confidence.value == "low", src
+        assert "full posting wasn't read" in v.reasons[0]
+    # A snippet can still reject.
+    assert evaluate_job(job("wellfound_alert", "4 years of experience required.")).keep is False
+    # A full company-board posting that says so is confirmed.
+    v = evaluate_job(job("greenhouse", "We hire freshers from the 2026 batch. " * 5)).fresher
+    assert v.experience_unclear is False and v.confidence.value == "high"
