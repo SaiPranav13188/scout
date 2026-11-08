@@ -85,7 +85,7 @@ companies use Keka, Zoho Recruit or Darwinbox, which have no documented public j
 | Parsers: LinkedIn, Wellfound, Internshala, Instahyre (one per sender) | done; tested on 34 real alert emails (local-only, never published) + format tests in CI |
 | Gmail check every 10 min (only emails newer than the last processed), same filters/dedupe/alerts | done; first run: 26 alert emails -> 153 jobs, feed 5 -> 59 relevant jobs |
 | Naukri | no parser: the inbox has no Naukri job alerts (only quizzes and reminders) |
-| Cloud Gmail runs | waiting for the ENCRYPTION_KEY GitHub secret (adding it was blocked by Claude Code's safety rules; command given to the user) |
+| Cloud Gmail runs | ENCRYPTION_KEY GitHub secret set (checked 2026-11-08) |
 | Aggregator APIs (Adzuna etc.) | not started |
 
 ## Phase 3: Resume parsing + matching (in progress)
@@ -99,8 +99,8 @@ companies use Keka, Zoho Recruit or Darwinbox, which have no documented public j
 | Eval: precision/recall vs labels | built: `cli match-eval` (precision/recall/false positives per score band, agreement, AUC vs the plain role-fit baseline, and an ablation: skills-only, embeddings-only, rubric-only and each pair, rebuilt offline from stored score parts); waiting for labels |
 | Resume Manager page (review/edit, upload PDF, versions) | done; checked in a browser against a local copy of resume v1 |
 | Re-scoring when the resume changes | done: each score stores the profile fingerprint it used; outdated scores are refreshed after new jobs, within the per-run limit |
-| Cloud scoring | waiting for GEMINI_API_KEY GitHub secret |
-| Live database migration 0005 | **waiting for you** (blocked for me by Claude Code's safety rules; commands in "Next steps for you") |
+| Cloud scoring | GEMINI_API_KEY set on GitHub and Render (checked 2026-11-08) |
+| Live database migration 0005 | applied (live database at 0005, checked 2026-11-08) |
 
 **Resume Manager (2026-11-07):** every section of the parsed resume is editable (contact, headline,
 skills by group, projects with tech and bullets, experience, education, achievements, certifications).
@@ -201,7 +201,7 @@ LinkedIn test pages (`apps/extension/test/browser_test.py`): all pass; the unpac
 | Follow-up reminders: 7 days after "applied" (setting `notifications.follow_up_days`), due ones named in the evening summary and on the page | done, tested |
 | Agent health: per worker last success, next run, 24 h runs / failures / retries, last error; Gemini calls and tokens (24 h) | done; checked in a browser |
 | Settings, evening summary, error alerts (one per worker per hour), restart-safe slots, no duplicate notifications | done earlier (Phase 1-2), tested |
-| Langfuse tracing | not done: needs Langfuse keys (docs/SETUP.md); LLM calls, tokens and errors are recorded in agent_runs meanwhile |
+| Langfuse tracing | built (every Gemini call); keys set on GitHub and Render |
 | Load / worker-crash tests (spec §13.8) | partly: retry-the-same-slot and failed-send-retry tests exist; no Redis restart test (production runs without Redis) |
 
 ## Dashboard end-to-end test (Playwright Test, 2026-11-08)
