@@ -21,6 +21,11 @@ LinkedIn pages. Getting their full text needs an aggregator API that carries it 
 Workday career sites were tried and dropped: nearly all return Cloudflare 521 to automated requests.
 Boards added: Ema, DevRev, Cloudflare, Bureau, Coursera (probed ~200 Indian companies; most aren't on Greenhouse/Lever/Ashby).
 
+### Dashboard back (2026-11-14)
+The API now runs on Vercel as a Python function (`scout-api-ashy.vercel.app`, project `scout-api`; deploy with
+`bash infra/vercel-api/deploy.sh`). Settings copied from Render; the dashboard's `NEXT_PUBLIC_API_URL` points
+there. Telegram uses polling from the GitHub loop, so no webhook. Render is no longer used.
+
 ## Phase 1: Foundation + discovery (in progress, code complete locally)
 
 Last updated: 2026-11-06
