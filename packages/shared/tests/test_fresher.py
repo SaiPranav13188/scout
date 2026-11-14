@@ -46,7 +46,7 @@ from scout_core.filters.fresher import (
         ("Software Engineer II", "", Decision.DROP),
         ("Software Engineer I", "", Decision.KEEP),
         ("Sr. Backend Developer", "", Decision.DROP),
-        ("Software Engineering Intern", "Summer internship, 10 weeks.", Decision.DROP),
+        ("Software Engineering Intern", "Summer internship, 10 weeks.", Decision.KEEP),  # internships on (2026-11-14)
         # --- "Associate" only when not senior
         ("Senior Associate, Engineering", "", Decision.DROP),
         ("Associate Director, Platform", "", Decision.DROP),
@@ -215,7 +215,7 @@ def test_equal_opportunity_footer_is_not_a_ppo_and_interns_must_meet_experience_
     """HackerRank "AI Researcher Intern" (2026-11-08): footer "equal opportunity" matched "ppo", and the
     intern-to-full-time shortcut skipped the "2-3 years of experience" requirement."""
     footer = "HackerRank is a proud equal employment opportunity and affirmative action employer."
-    v = classify("AI Researcher Intern", "Research deep learning.\n" + footer)
+    v = classify("AI Researcher Intern", "Research deep learning.\n" + footer, FresherRules(include_internships=False))
     assert v.decision == Decision.DROP and "internship without full-time conversion" in v.reasons[0]
     desc = ("Who you are: M.Tech./M.S./Ph.D. in AI/ML. 2-3 years of experience in Deep Learning. "
             "Pre-placement offer for strong interns. " + footer)

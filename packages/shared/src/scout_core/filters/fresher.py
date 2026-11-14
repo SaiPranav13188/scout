@@ -38,7 +38,8 @@ class FresherRules:
     # Two readers (2026-11-08): a job the rules approve is shown only after Gemini has read the whole
     # posting and quoted the sentence that makes it a fresher role (checked against the text).
     second_reading: bool = True
-    include_internships: bool = False  # plain internships; intern-to-full-time is always kept
+    # 2026-11-14: I apply to internships too (Internshala, LinkedIn), so they are shown by default.
+    include_internships: bool = True  # plain internships; intern-to-full-time is always kept
     title_drop_words: list[str] = field(default_factory=lambda: [
         "senior", "sr", "lead", "staff", "principal", "manager", "architect", "director",
         "head of", "vp", "vice president", "chief", "distinguished", "expert", "ii", "iii", "iv",
@@ -299,7 +300,10 @@ def classify(title: str, description: str | None, rules: FresherRules | None = N
 
     # 3. Explicit experience requirements (title first, then description). Read even for
     # intern-to-full-time roles: "AI Researcher Intern" asking for 2-3 years is not a fresher role.
-    reqs = extract_requirements(title, limit) + (extract_requirements(description, limit) if description else [])
+    # Years in a title always mean experience ("AI Engineer (2-4 years)", "ML Engineer 3+ yrs"); the
+    # sentence-context check that body text needs doesn't apply (2026-11-14).
+    reqs = (extract_requirements(f"experience: {title}", limit)
+            + (extract_requirements(description, limit) if description else []))
     if is_intern and converts:
         too_high = [r for r in reqs if _requirement_fits(r, limit) is False]
         if too_high:

@@ -498,8 +498,8 @@ async def test_scores_follow_the_active_resume(client, session):
 
 
 
-async def test_feed_shows_ai_field_roles_only(client, session):
-    """My field is AI: a plain backend role stays out even when it is entry level."""
+async def test_feed_shows_tech_roles_but_not_off_field(client, session):
+    """2026-11-14: AI plus software / backend / full-stack roles are shown (I apply to all of them)."""
     await _seed(session)
     company = await get_or_create_company(session, name="Acme AI", website=None, source="test")
     await store_jobs(session, [NormalizedJob(
@@ -509,7 +509,7 @@ async def test_feed_shows_ai_field_roles_only(client, session):
         company=company, fresher_rules=FresherRules(second_reading=False), relevance_rules=RelevanceRules(), prefs=Preferences())
     await session.commit()
     titles = [j["title"] for j in (await client.get("/api/jobs", headers=_auth())).json()["items"]]
-    assert "Backend Developer" not in titles and "AI Engineer" in titles
+    assert "Backend Developer" in titles and "AI Engineer" in titles
     stats = (await client.get("/api/stats", headers=_auth())).json()
     assert stats["open_in_feed"] == len(titles)
 

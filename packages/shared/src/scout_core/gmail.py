@@ -105,8 +105,14 @@ class GmailClient:
         # Gmail answers 403/429 "rate limit" to quick bursts (seen 2026-11-14); the same message loads a
         # moment later, so back off and retry instead of failing the whole run.
         for attempt in range(4):
-            r = await self._http.get(f"{API}/messages/{message_id}", headers=self._headers,
-                                     params={"format": "full"})
+            try:
+                r = await self._http.get(f"{API}/messages/{message_id}", headers=self._headers,
+                                         params={"format": "full"})
+            except httpx.TransportError:  # read timeouts happen on long runs (2026-11-14)
+                if attempt == 3:
+                    raise
+                await asyncio.sleep(2 ** attempt * 2)
+                continue
             if r.status_code in (403, 429) and attempt < 3 and "ate" in r.text:  # rateLimitExceeded
                 await asyncio.sleep(2 ** attempt * 2)
                 continue

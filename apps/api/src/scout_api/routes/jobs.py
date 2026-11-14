@@ -13,7 +13,13 @@ from scout_core import services
 from scout_core.db.models import Company, Job, JobLabel, JobScore
 from scout_core.matching import PROMPT_VERSION
 from scout_core.runs import audit
-from scout_core.services import MIN_FEED_RELEVANCE, ai_field, feed_query, set_status
+from scout_core.services import (
+    MIN_FEED_RELEVANCE,
+    feed_query,
+    set_status,
+    tech_field,
+    unverified_alert,
+)
 from scout_core.settings_store import get_setting
 from scout_core.types import ApplicationStatus
 
@@ -47,11 +53,11 @@ async def list_jobs(
     if status != "all":
         stmt = stmt.where(Job.status == ApplicationStatus(status))
     if not all_roles:
-        stmt = stmt.where(Job.role_family != "unrelated", Job.relevance_score >= MIN_FEED_RELEVANCE, ai_field())
+        stmt = stmt.where(Job.role_family != "unrelated", Job.relevance_score >= MIN_FEED_RELEVANCE, tech_field())
     stmt = stmt.where(Job.trust_level != "scam_risk")
-    unclear_count_q = stmt.where(Job.experience_unclear.is_(True))
+    unclear_count_q = stmt.where(Job.experience_unclear.is_(True), ~unverified_alert())
     if not include_unclear:
-        stmt = stmt.where(Job.experience_unclear.is_(False))
+        stmt = stmt.where(or_(Job.experience_unclear.is_(False), unverified_alert()))
     # Facets are computed before the user-selected facet filters so counts stay useful.
     base = stmt
     if q:

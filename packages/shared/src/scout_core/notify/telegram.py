@@ -102,7 +102,9 @@ def format_job(item: DigestItem, now: datetime | None = None) -> tuple[str, list
         f"<b>{e(item.title)}</b>",
         f"{e(item.company)} · {e(item.location or 'location not stated')}",
         f"{TRUST_ICON.get(item.trust_level, '')} {e(item.trust_level.replace('_', ' '))} · "
-        f"fresher fit: {e(item.fresher_confidence or 'unknown')} · {_ago(item.posted_at, now)}",
+        + ("⚠️ experience not stated, check before applying" if item.fresher_confidence == "low"
+           else f"fresher fit: {e(item.fresher_confidence or 'unknown')}")
+        + f" · {_ago(item.posted_at, now)}",
     ]
     if item.salary_text:
         lines.append(f"💰 {e(item.salary_text)}")

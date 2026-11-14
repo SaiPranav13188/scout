@@ -57,6 +57,10 @@ def has_full_posting(source: str) -> bool:
 
 
 SNIPPET_ONLY = "only a title or snippet from an email alert; the full posting couldn't be read"
+# 2026-11-14 (my decision after a week with nothing): an alert job with nothing in its title or snippet that
+# asks for experience is SHOWN, labelled so I check the posting before applying. Alert jobs whose title or
+# snippet asks for experience (Senior, Lead, "3+ years", "1-3 yrs"...) are still dropped.
+UNVERIFIED_ALERT = "experience not stated in the alert email: check the posting before applying"
 
 
 NO_DESCRIPTION = "the job board gave no description to read"
@@ -105,7 +109,8 @@ def require_full_posting(source: str, verdict: FresherVerdict, description: str 
         if what:
             return replace(verdict, experience_unclear=False, confidence=Confidence.MEDIUM,
                            reasons=[SNIPPET_CONFIRMS.format(what=what), *verdict.reasons])
-        reason = SNIPPET_ONLY
+        return replace(verdict, experience_unclear=True, confidence=Confidence.LOW,
+                       reasons=[UNVERIFIED_ALERT, *[r for r in verdict.reasons if r != "experience not stated"]])
     elif not (description or "").strip():  # a board listing with no text at all is just a title
         reason = NO_DESCRIPTION
     else:
@@ -114,9 +119,9 @@ def require_full_posting(source: str, verdict: FresherVerdict, description: str 
 
 
 def title_confirmed(verdict: FresherVerdict) -> bool:
-    """Confirmed from an alert's own employer text (title or quoted snippet): no fuller text to re-read."""
+    """Judged from an alert's own text (confirmed or unverified): there is no fuller text to re-read."""
     return bool(verdict.reasons) and verdict.reasons[0].startswith(("title written by the employer",
-                                                                  "text quoted from the posting"))
+                                                                  "text quoted from the posting", UNVERIFIED_ALERT))
 
 
 AWAITING_SECOND_READING = "rules found it entry-level; waiting for the full-text check"

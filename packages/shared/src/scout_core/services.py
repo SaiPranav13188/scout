@@ -43,14 +43,29 @@ def ai_field():
                and_(Job.role_family.in_(["fde", "backend", "fullstack", "software"]), ai_words >= 2))
 
 
+# 2026-11-14: I apply to software / full-stack / backend roles as well as AI, so the feed shows all of them.
+TECH_FAMILIES = ("applied_ai", "fde", "backend", "fullstack", "software")
+
+
+def tech_field():
+    return Job.role_family.in_(TECH_FAMILIES)
+
+
+def unverified_alert():
+    """Alert-email jobs shown although the email doesn't state the experience (nothing in it asks for more)."""
+    from scout_core.pipeline.evaluate import UNVERIFIED_ALERT
+    return and_(Job.source.like("%\\_alert", escape="\\"),
+                Job.fresher_reasons.op("->>")(0) == UNVERIFIED_ALERT)
+
+
 def visible_feed_query(include_unclear: bool = False) -> Select:
     """What the Today page, Telegram and stats show by default: feed jobs minus scam risk and
-    off-target roles, and only jobs confirmed as entry-level. Jobs whose experience is unclear
-    (e.g. title-only alert emails) are shown only when asked for."""
+    off-target roles; entry-level confirmed jobs plus alert-email jobs that state no experience (labelled).
+    Board jobs whose full posting doesn't settle the experience are shown only when asked for."""
     q = feed_query().where(Job.trust_level != "scam_risk", Job.role_family != "unrelated",
-                           Job.relevance_score >= MIN_FEED_RELEVANCE, ai_field())
+                           Job.relevance_score >= MIN_FEED_RELEVANCE, tech_field())
     if not include_unclear:
-        q = q.where(Job.experience_unclear.is_(False))
+        q = q.where(or_(Job.experience_unclear.is_(False), unverified_alert()))
     return q
 
 

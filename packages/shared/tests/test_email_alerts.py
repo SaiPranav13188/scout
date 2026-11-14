@@ -119,8 +119,10 @@ def test_internshala_format():
     # "3 days ago" on the card becomes an estimated posting time 3 days before the email.
     assert job.posted_at_kind == "relative_estimate" and (NOW - job.posted_at).days == 3
     assert intern.posted_at is None  # that card states no date
-    # A card is only a snippet: since 2026-11-08 snippet-only jobs are left out (full posting not read).
-    assert not evaluate_job(intern).keep
+    # A card is only a snippet. Since 2026-11-14 it is shown, labelled as unverified (internships included).
+    ev = evaluate_job(intern)
+    assert ev.keep and ev.fresher.experience_unclear and ev.fresher.confidence.value == "low"
+    assert ev.fresher.reasons[0].startswith("experience not stated in the alert")
 
 
 def test_internshala_interview_invite_ignored():
@@ -193,7 +195,9 @@ def test_linkedin_entry_level_filter_is_never_proof():
         job = alert(q)
         assert job.description_text is None, q  # nothing invented
         ev = evaluate_job(job)
-        assert not ev.keep and "couldn't be read" in ev.fresher.reasons[0], q  # title only: left out
+        # Title only: shown but never as a confirmed fresher role, whatever LinkedIn's filter said.
+        assert ev.keep and ev.fresher.experience_unclear and ev.fresher.confidence.value == "low", q
+        assert ev.fresher.reasons[0].startswith("experience not stated in the alert"), q
     assert alert("keywords=ai%20engineer&f_E=1%2C2").extra["entry_level_alert"] is True  # kept for information
 
 
@@ -210,12 +214,12 @@ def test_snippets_confirm_only_with_explicit_employer_text_and_can_reject():
                              apply_url="https://example.com/job/1")
 
     rules = FresherRules()
-    # Vague or weak snippets are not enough: those jobs are left out entirely.
+    # Vague or weak snippets don't confirm: shown only as unverified (2026-11-14).
     for src, desc, kind in (("internshala_alert", "Job offer upto ₹6LPA post internship", "Intern"),
                             ("instahyre_alert", "Junior role. Python, LLM.", None),
                             ("wellfound_alert", "Build agents with our team.", None)):
         ev = evaluate_job(job(src, desc, employment_type=kind), fresher_rules=rules)
-        assert not ev.keep and "couldn't be read" in ev.fresher.reasons[0], src
+        assert ev.keep and ev.fresher.experience_unclear and "not stated in the alert" in ev.fresher.reasons[0], src
     # The employer's explicit words do count.
     for src, desc in (("instahyre_alert", "Freshers welcome. Python, LLM."),
                       ("wellfound_alert", "0 years of experience required.")):
@@ -291,14 +295,16 @@ def test_alert_title_written_by_employer_can_confirm_fresher():
         assert not ev.fresher.experience_unclear and "title written by the employer" in ev.fresher.reasons[0], title
 
 
-def test_alert_title_without_proof_is_still_left_out():
-    """A bare AI title, weak words ('Associate', 'Junior', 'Engineer I'), or a fresher word next to a
-    seniority word never get through from a title-only alert."""
+def test_alert_title_without_proof_is_shown_unverified_and_seniority_still_drops():
+    """2026-11-14: a title-only alert job is shown, labelled unverified (never confirmed); a seniority word or
+    an experience range above 1 year in the title still drops it."""
     for title in ("AI Engineer", "Associate AI/ML Engineer", "Junior Data Scientist", "AI Developer 1",
-                  "Applied Scientist I", "Senior AI Engineer (Freshers can apply)", "AI Engineer (2-4 years)",
                   "Graduate Research Assistant - NLP"):
         ev = evaluate_job(_alert_job(title))
-        assert not ev.keep, title
+        assert ev.keep and ev.fresher.experience_unclear and ev.fresher.confidence.value == "low", title
+    for title in ("Senior AI Engineer (Freshers can apply)", "AI Engineer (2-4 years)", "Lead ML Engineer",
+                  "Data Scientist II", "Principal Engineer - AI", "Engineering Manager, ML"):
+        assert not evaluate_job(_alert_job(title)).keep, title
 
 
 # ------------------------------------------------------------------ Indeed / hirist (2026-11-14, invented content)
@@ -338,10 +344,10 @@ def test_indeed_digest_format_and_snippet_evidence():
     a, b, c = jobs
     assert a.apply_url == "https://in.indeed.com/viewjob?jk=3b954430d4016425"  # no tracking link stored
     assert a.posted_at == NOW and b.posted_at.day == NOW.day - 2
-    # The employer's own words in the snippet confirm a fresher role; no proof = left out; 3+ years = dropped.
+    # The employer's own words confirm a fresher role; no proof = shown unverified; 3+ years = dropped.
     ea, eb, ec = (evaluate_job(j) for j in jobs)
     assert ea.keep and not ea.fresher.experience_unclear and "quoted from the posting" in ea.fresher.reasons[0]
-    assert not eb.keep and "only a title or snippet" in eb.drop_reasons[0]
+    assert eb.keep and eb.fresher.experience_unclear and "not stated in the alert" in eb.fresher.reasons[0]
     assert not ec.keep and "3+ years" in ec.drop_reasons[0]
 
 
@@ -376,3 +382,39 @@ def test_hirist_digest_reads_the_listed_experience_range():
     keep, drop = (evaluate_job(j) for j in jobs)
     assert keep.keep and not keep.fresher.experience_unclear
     assert not drop.keep and "2-5 years" in drop.drop_reasons[0]
+
+
+GLASSDOOR_HTML = """<html><body><div>Job alert: Ai Engineer</div><div>Your job listings for 12 November 2026</div>
+<div>Ai Engineer</div><div>Bengaluru</div>
+<a href="https://www.glassdoor.co.in/partner/jobListing.htm?pos=101&amp;x=1"><div>Acme AI 4.0 ★</div><div>AI Engineer - Fresher</div>
+<div>Bengaluru</div><div>₹4L - ₹7L (Glassdoor Est.)</div><div>Easy Apply</div><div>5d</div></a>
+<a href="https://www.glassdoor.co.in/partner/jobListing.htm?pos=102&amp;x=1"><div>Beta Labs</div><div>Senior ML Engineer</div>
+<div>India</div><div>Easy Apply</div></a>
+<a href="https://www.glassdoor.co.in/partner/jobListing.htm?pos=103&amp;x=1"><div>Gamma 3.9 ★</div><div>AI Engineer Intern</div>
+<div>Bengaluru</div><div>2d</div></a>
+<div>See more jobs</div></body></html>"""
+
+
+def test_glassdoor_cards():
+    _, jobs = parse_alert(_msg("Glassdoor Jobs <noreply@glassdoor.com>", "AI Engineer at Acme AI and 2 more", html=GLASSDOOR_HTML))
+    assert [(j.title, j.company_name, j.location) for j in jobs] == [
+        ("AI Engineer - Fresher", "Acme AI", "Bengaluru"), ("Senior ML Engineer", "Beta Labs", "India"),
+        ("AI Engineer Intern", "Gamma", "Bengaluru")]
+    assert jobs[0].apply_url.endswith("pos=101&x=1") and jobs[2].apply_url.endswith("pos=103&x=1")
+    assert jobs[0].extra["salary_text"] == "₹4L - ₹7L (Glassdoor Est.)" and (NOW - jobs[0].posted_at).days == 5
+    a, b, c = (evaluate_job(j) for j in jobs)
+    assert a.keep and not a.fresher.experience_unclear      # the title says fresher
+    assert not b.keep                                        # senior
+    assert c.keep and c.fresher.experience_unclear           # internship, unverified
+
+
+def test_linkedin_recommendation_mail_section_headers_are_not_jobs():
+    text = ("Jobs that match your profile\nBased on your title and location. Update:\n"
+            "https://www.linkedin.com/comm/jobs/preferences\n"
+            "Remote jobs\nhttps://www.linkedin.com/comm/jobs/search-results/?keywords=x\n"
+            "AI Engineer (Remote)\nJoblet\nIndia\nView job: https://www.linkedin.com/comm/jobs/view/444/?x=1\n"
+            "---------------------------------------------------------\n"
+            "ML Engineer\nBeta\nHyderabad\nView job: https://www.linkedin.com/comm/jobs/view/555/\n")
+    _, jobs = parse_alert(_msg("LinkedIn <jobs-noreply@linkedin.com>", "Joblet is hiring", text=text))
+    assert [(j.title, j.company_name, j.location) for j in jobs] == [
+        ("AI Engineer (Remote)", "Joblet", "India"), ("ML Engineer", "Beta", "Hyderabad")]

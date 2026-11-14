@@ -19,7 +19,8 @@ from scout_core.types import NormalizedJob, Salary
 # Gmail search covering every supported alert sender (subjects are filtered per parser).
 ALERT_QUERY = (
     "(from:jobalerts-noreply@linkedin.com OR from:team@hi.wellfound.com OR from:internshala.com "
-    "OR from:noreply@instahyre.com OR from:jobalert.indeed.com OR from:match.indeed.com OR from:hirist.tech)"
+    "OR from:noreply@instahyre.com OR from:jobalert.indeed.com OR from:match.indeed.com OR from:hirist.tech "
+    "OR from:jobs-noreply@linkedin.com OR from:noreply@glassdoor.com)"
 )
 
 
@@ -58,6 +59,8 @@ def _strip_query(url: str) -> str:
 # became job titles / companies of 12 fake jobs).
 _LI_CHROME = re.compile(
     r"^(see all jobs|edit alert|new jobs from your other alerts|new jobs match your preferences|manage alerts|"
+    r"expand your search|recommendations based on|jobs you may be interested in|jobs that match your profile|"
+    r"based on your (title|profile|activity)|"
     r"jobs in [^\n]{1,60}$|your job alert for)|https?://",
     re.IGNORECASE)
 
@@ -111,7 +114,9 @@ def parse_linkedin(msg: EmailMessage) -> list[NormalizedJob]:
         if not m:
             continue
         job_id = m.group(1)
-        lines = [ln.strip() for ln in block[: m.start()].splitlines() if ln.strip()]
+        raw = [ln.strip() for ln in block[: m.start()].splitlines() if ln.strip()]
+        # A section title ("Remote jobs") is the line just before its own search link (2026-11-14 layout).
+        lines = [ln for i, ln in enumerate(raw) if not (i + 1 < len(raw) and raw[i + 1].startswith("http"))]
         lines = [ln for ln in lines
                  if not _LI_CHROME.search(ln) and not _LI_BADGES.match(ln) and not _LI_HTML.search(ln)]
         if len(lines) < 2:
@@ -420,6 +425,55 @@ def parse_hirist(msg: EmailMessage) -> list[NormalizedJob]:
     )]
 
 
+# ------------------------------------------------------------------ Glassdoor (added 2026-11-14)
+# Digests ("Job alert: Ai Engineer") and "Jobs for You" mails: cards of company (rating ★), title, location,
+# then optional salary / "Easy Apply" / age. Title only, like LinkedIn. Each card is one link, in order.
+
+_GD_OPTIONAL = re.compile(r"^(easy apply|\d+[dh]\+?|24h|new)$|est\.\)$|^₹", re.IGNORECASE)
+
+
+def parse_glassdoor(msg: EmailMessage) -> list[NormalizedJob]:
+    if not msg.html:
+        return []
+    texts = [re.sub(r"[\u200b-\u200f\ufeff]", "", t).strip() for t, _ in _html_lines(msg.html)]
+    texts = [t for t in texts if t]
+    start = next((i + 1 for i, t in enumerate(texts) if t.startswith(("Your job listings for", "See the latest roles at"))), None)
+    if start is None:
+        return []
+    alert = next((t.split(":", 1)[1].strip().lower() for t in texts if t.startswith("Job alert:")), None)
+    if alert and start + 1 < len(texts) and texts[start].lower() == alert:
+        start += 2  # the alert's own search words and place, above the first card
+    end = next((i for i, t in enumerate(texts) if i >= start and t.startswith(("See more", "Want more listings"))), len(texts))
+    links = [import_html.unescape(h) for h in re.findall(r'href="([^"]+)"', msg.html) if "/partner/jobListing" in h]
+    cards: list[tuple[str, str, str, str | None, str | None]] = []
+    i = start
+    while i + 2 < end:
+        company, title, location = texts[i], texts[i + 1], texts[i + 2]
+        i += 3
+        salary = age = None
+        while i < end and _GD_OPTIONAL.search(texts[i]):
+            if texts[i].startswith("₹"):
+                salary = texts[i]
+            elif re.match(r"^\d+[dh]", texts[i]):
+                age = texts[i]
+            i += 1
+        cards.append((re.sub(r"\s+\d\.\d\s*★$", "", company).strip(), title, location, salary, age))
+    import hashlib
+    jobs = []
+    for k, (company, title, location, salary, age) in enumerate(cards):
+        days = int(re.match(r"\d+", age).group()) if age and age.endswith(("d", "d+")) else 0 if age else None
+        posted = msg.received_at - __import__("datetime").timedelta(days=days) if days is not None else None
+        jobs.append(NormalizedJob(
+            source="glassdoor_alert",
+            source_job_id="g" + hashlib.sha256(f"{company}|{title}|{location}".lower().encode()).hexdigest()[:16],
+            company_name=company, title=title, description_text=None, location=location, locations=[location],
+            posted_at=posted, posted_at_kind="relative_estimate" if posted else "not_given",
+            apply_url=links[k] if len(links) == len(cards) else "https://www.glassdoor.co.in/Job/index.htm",
+            extra={"gmail_id": msg.id, "salary_text": salary, "country": "IN" if ".co.in" in msg.html else None},
+        ))
+    return jobs
+
+
 PARSERS: dict[str, Callable[[EmailMessage], list[NormalizedJob]]] = {
     "linkedin.com": parse_linkedin,
     "hi.wellfound.com": parse_wellfound,
@@ -427,6 +481,7 @@ PARSERS: dict[str, Callable[[EmailMessage], list[NormalizedJob]]] = {
     "instahyre.com": parse_instahyre,
     "indeed.com": parse_indeed,
     "hirist.tech": parse_hirist,
+    "glassdoor.com": parse_glassdoor,
 }
 
 
@@ -435,7 +490,7 @@ def parse_alert(msg: EmailMessage) -> tuple[str | None, list[NormalizedJob]]:
     domain = _sender_domain(msg.sender)
     for suffix, parser in PARSERS.items():
         if domain == suffix or domain.endswith("." + suffix):
-            if suffix == "linkedin.com" and "jobalerts-noreply@" not in msg.sender.lower():
+            if suffix == "linkedin.com" and not re.search(r"(jobalerts|jobs)-noreply@", msg.sender.lower()):
                 return parser.__name__, []  # security, messages and other LinkedIn mail
             return parser.__name__, parser(msg)
     return None, []

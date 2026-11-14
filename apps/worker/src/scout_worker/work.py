@@ -705,27 +705,30 @@ async def recheck_feed(apply: bool = False) -> dict:
                 job.experience_min, job.experience_max = v.experience_min, v.experience_max
                 job.experience_unclear, job.fresher_confidence = v.experience_unclear, v.confidence.value
                 job.fresher_reasons = v.reasons
-        # Alert jobs left out only for being a snippet, whose employer-written title now confirms a fresher
-        # role (rule of 2026-11-14). Jobs dropped for anything else (location, scam...) stay out.
+        # Alert jobs left out by the stricter rules before 2026-11-14 (title-only, internships) that the current
+        # rules show: confirmed by their own text, or unverified and labelled.
         restored: list[str] = []
         snippet_only = (await session.scalars(select(Job).where(
             Job.passed_filters.is_(False), Job.source.like("%\\_alert", escape="\\"),
             Job.status == ApplicationStatus.DISCOVERED, Job.duplicate_of.is_(None),
-            Job.first_seen_at >= datetime.now(UTC) - timedelta(days=30)))).all()
+            Job.first_seen_at >= datetime.now(UTC) - timedelta(days=14)))).all()
         for job in snippet_only:
-            if not job.filter_reasons or not all(str(r).startswith("experience: " + SNIPPET_ONLY)
-                                                 for r in job.filter_reasons):
+            # Only jobs dropped for experience reasons the new rules may lift (title-only alert, internship);
+            # anything dropped for location, scam risk etc. stays out.
+            if not job.filter_reasons or not all(
+                    str(r).startswith(("experience: " + SNIPPET_ONLY, "experience: internship without"))
+                    for r in job.filter_reasons):
                 continue
             desc = None if job.description == INVENTED_LINKEDIN_TEXT else job.description
             v = require_full_posting(job.source, classify(job.title, desc, fresher_rules, job.employment_type),
                                      desc, job.title)
-            if v.decision == Decision.DROP or not title_confirmed(v):
+            if v.decision == Decision.DROP or (fresher_rules.second_reading and not title_confirmed(v)):
                 continue
             restored.append(f"{job.title} @ {job.company_name}: {v.reasons[0]}"[:160])
             if apply:
                 job.passed_filters, job.filter_reasons = True, []
                 job.experience_min, job.experience_max = v.experience_min, v.experience_max
-                job.experience_unclear, job.fresher_confidence = False, v.confidence.value
+                job.experience_unclear, job.fresher_confidence = v.experience_unclear, v.confidence.value
                 job.fresher_reasons = v.reasons
         if apply:
             await session.commit()
