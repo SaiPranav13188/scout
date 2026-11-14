@@ -71,6 +71,7 @@ STRONG_TITLE_WORDS = (
     "2025 batch", "2026 batch", "2025 graduates", "2026 graduates", "early career",
 )
 TITLE_CONFIRMS = "title written by the employer says '{word}' (alert email: the full posting couldn't be read)"
+SNIPPET_CONFIRMS = ("text quoted from the posting says {what} (alert email: the full posting couldn't be read)")
 
 
 def alert_title_word(title: str) -> str | None:
@@ -92,6 +93,18 @@ def require_full_posting(source: str, verdict: FresherVerdict, description: str 
             return replace(verdict, experience_unclear=False, confidence=Confidence.MEDIUM,
                            reasons=[TITLE_CONFIRMS.format(word=word),
                                     *[r for r in verdict.reasons if r != "experience not stated"]])
+        # 2026-11-14: Indeed/hirist alerts quote the posting ("Experience: Fresher to 1 Year", a listing's
+        # "0 - 1 years"). Employer text that states a fitting experience level counts like the title does;
+        # anything that asks for more already dropped the job above. Weak or mixed signals still don't.
+        what = None
+        if description and (word := alert_title_word(description)):
+            what = f"'{word}'"
+        elif description and not verdict.experience_unclear and verdict.reasons and \
+                verdict.reasons[0].startswith("states "):
+            what = verdict.reasons[0].removeprefix("states ")
+        if what:
+            return replace(verdict, experience_unclear=False, confidence=Confidence.MEDIUM,
+                           reasons=[SNIPPET_CONFIRMS.format(what=what), *verdict.reasons])
         reason = SNIPPET_ONLY
     elif not (description or "").strip():  # a board listing with no text at all is just a title
         reason = NO_DESCRIPTION
@@ -101,7 +114,9 @@ def require_full_posting(source: str, verdict: FresherVerdict, description: str 
 
 
 def title_confirmed(verdict: FresherVerdict) -> bool:
-    return bool(verdict.reasons) and verdict.reasons[0].startswith("title written by the employer")
+    """Confirmed from an alert's own employer text (title or quoted snippet): no fuller text to re-read."""
+    return bool(verdict.reasons) and verdict.reasons[0].startswith(("title written by the employer",
+                                                                  "text quoted from the posting"))
 
 
 AWAITING_SECOND_READING = "rules found it entry-level; waiting for the full-text check"

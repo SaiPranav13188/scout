@@ -5,6 +5,7 @@ Scope: gmail.readonly only. The OAuth client config and refresh token are stored
 plain code and never treated as instructions.
 """
 
+import asyncio
 import base64
 import json
 from dataclasses import dataclass
@@ -101,7 +102,15 @@ class GmailClient:
         return ids
 
     async def get(self, message_id: str) -> EmailMessage:
-        r = await self._http.get(f"{API}/messages/{message_id}", headers=self._headers, params={"format": "full"})
+        # Gmail answers 403/429 "rate limit" to quick bursts (seen 2026-11-14); the same message loads a
+        # moment later, so back off and retry instead of failing the whole run.
+        for attempt in range(4):
+            r = await self._http.get(f"{API}/messages/{message_id}", headers=self._headers,
+                                     params={"format": "full"})
+            if r.status_code in (403, 429) and attempt < 3 and "ate" in r.text:  # rateLimitExceeded
+                await asyncio.sleep(2 ** attempt * 2)
+                continue
+            break
         r.raise_for_status()
         return parse_message(r.json())
 

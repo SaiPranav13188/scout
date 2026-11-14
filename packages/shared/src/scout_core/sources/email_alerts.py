@@ -6,6 +6,7 @@ the real address is embedded in them; tracking links are never followed (no auto
 these sites). Missing details stay None.
 """
 
+import html as import_html
 import re
 from collections.abc import Callable
 from urllib.parse import unquote, urlsplit
@@ -18,7 +19,7 @@ from scout_core.types import NormalizedJob, Salary
 # Gmail search covering every supported alert sender (subjects are filtered per parser).
 ALERT_QUERY = (
     "(from:jobalerts-noreply@linkedin.com OR from:team@hi.wellfound.com OR from:internshala.com "
-    "OR from:noreply@instahyre.com)"
+    "OR from:noreply@instahyre.com OR from:jobalert.indeed.com OR from:match.indeed.com OR from:hirist.tech)"
 )
 
 
@@ -262,11 +263,170 @@ def parse_instahyre(msg: EmailMessage) -> list[NormalizedJob]:
     return jobs
 
 
+# ------------------------------------------------------------------ Indeed (added 2026-11-14)
+# 39 Indeed alert emails in 10 days were ignored before this parser existed. Digests ("11 new machine
+# learning fresher internship vacancies") give per job: title, "Company - Location", salary, badges, a
+# snippet quoted from the posting ("Experience:* Fresher to 1 Year") and its age. Job-match emails
+# give one job with Indeed's own summary of the posting's requirements.
+
+_INDEED_JOB_URL = re.compile(r"^https?://\S*indeed\.com/\S*?[?&]jk=([0-9a-f]{8,})\S*$")
+_INDEED_ANY_URL = re.compile(r"^https?://\S*indeed\.com/(?:rc/clk|pagead|viewjob)\S*$")
+_INDEED_AGE = re.compile(r"^(just posted|today|active \d+ days? ago|\d+\+? days? ago|\d+ hours? ago)$", re.IGNORECASE)
+_INDEED_SALARY = re.compile(r"^(₹|rs\.?|inr|\$|from ₹|up to ₹).*|.*\b(a|an|per) (month|year|hour|day|week)$",
+                            re.IGNORECASE)
+_INDEED_BADGES = re.compile(r"^(easily apply|urgently hiring|responsive employer|hiring multiple candidates|"
+                            r"new|actively hiring|be an early applicant|apply now)$", re.IGNORECASE)
+
+
+def _indeed_job(lines: list[str], job_key: str, url: str, msg: EmailMessage) -> NormalizedJob | None:
+    if len(lines) < 2 or " - " not in lines[1]:
+        return None
+    title = lines[0]
+    company, location = (x.strip() for x in lines[1].rsplit(" - ", 1))
+    rest = lines[2:]
+    age = rest.pop() if rest and _INDEED_AGE.match(rest[-1]) else None
+    salary = next((x for x in rest if _INDEED_SALARY.match(x)), None)
+    snippet = " ".join(x for x in rest if x != salary and not _INDEED_BADGES.match(x)).replace("*", "").strip()
+    age_norm = re.sub(r"^active ", "", (age or "").lower()).replace("+", "").replace("just posted", "just now")
+    posted, kind = posted_from_relative([age_norm] if age else [], msg.received_at)
+    return NormalizedJob(
+        source="indeed_alert", source_job_id=job_key, company_name=company, title=title,
+        description_text=snippet or None,  # a quoted snippet, never the whole posting
+        location=location, locations=[location],
+        remote=True if re.search(r"\bremote\b|work from home", location, re.IGNORECASE) else None,
+        posted_at=posted, posted_at_kind=kind,
+        apply_url=f"https://in.indeed.com/viewjob?jk={job_key}" if re.fullmatch(r"[0-9a-f]+", job_key) else url,
+        extra={"gmail_id": msg.id, "salary_text": salary, "country": "IN" if "in.indeed.com" in url else None},
+    )
+
+
+def parse_indeed(msg: EmailMessage) -> list[NormalizedJob]:
+    text = (msg.text or "").replace("\r\n", "\n")
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    jobs: list[NormalizedJob] = []
+    if "match.indeed.com" in msg.sender.lower():
+        # One recommended job: "Hi X," / Indeed's summary / title / company / location / Job type / View job.
+        view = next((i for i, ln in enumerate(lines) if ln.startswith("View job:")), None)
+        if view is None or view < 4:
+            return []
+        start = next((i for i, ln in enumerate(lines) if re.match(r"^(hi|hello)\b", ln, re.IGNORECASE)), -1)
+        block = [ln for ln in lines[start + 1: view] if not ln.lower().startswith("job type:")]
+        if len(block) < 4:
+            return []
+        summary, (title, company, location) = " ".join(block[:-3]), block[-3:]
+        url = lines[view].split(":", 1)[1].strip()
+        import hashlib
+        key = "m" + hashlib.sha256(f"{company}|{title}|{location}".lower().encode()).hexdigest()[:16]
+        return [NormalizedJob(
+            source="indeed_alert", source_job_id=key, company_name=company, title=title,
+            description_text=summary or None, location=location, locations=[location],
+            posted_at=None, posted_at_kind="not_given", apply_url=url,
+            extra={"gmail_id": msg.id, "country": "IN", "kind": "job_match"},
+        )]
+    block: list[str] = []
+    started = False
+    for ln in lines:
+        if not started:
+            started = ln.startswith("See matching results on Indeed")
+            continue
+        m = _INDEED_JOB_URL.match(ln)
+        if m or _INDEED_ANY_URL.match(ln):
+            if m and (job := _indeed_job(block, m.group(1), ln, msg)):
+                jobs.append(job)
+            block = []
+            continue
+        if ln.startswith("Do not share this email"):
+            break
+        block.append(ln)
+    return jobs
+
+
+# ------------------------------------------------------------------ hirist.tech (added 2026-11-14)
+# Single-job mails ("Hiring | Data Scientist at Talentiser") carry the WHOLE posting (location,
+# "Experience: 1 - 5 Years", requirements), so they are judged like a company-board job. The weekly digest
+# lists "DD/MM - Company - Title (1-3 yrs) - Location": a title with the employer's experience range.
+
+def _html_lines(html: str) -> list[tuple[str, str | None]]:
+    """(visible line, first link target on that line) for simple mailer HTML."""
+    h = re.sub(r"<(style|script|head)\b.*?</\1>", "", html, flags=re.S | re.I)
+    h = re.sub(r"<(br|/p|/div|/tr|/td|/h\d|/li|/table)\b[^>]*>", "\n", h, flags=re.I)
+    h = re.sub(r'<a\b[^>]*href="([^"]+)"[^>]*>', lambda m: f" \x00{m.group(1)}\x01 ", h, flags=re.I)
+    h = re.sub(r"<[^>]+>", " ", h)
+    out = []
+    for raw in import_html.unescape(h).splitlines():
+        link = re.search(r"\x00([^\x01]*)\x01", raw)
+        line = " ".join(re.sub(r"\x00[^\x01]*\x01", " ", raw).replace("\xa0", " ").split())
+        if line:
+            out.append((line, _decode_tracked(link.group(1)) if link else None))
+    return out
+
+
+_HIRIST_DIGEST = re.compile(r"^(?P<date>\d{2}/\d{2}) - (?P<rest>.+\((?P<lo>\d+)\s*-\s*(?P<hi>\d+) yrs\)) - (?P<loc>.+)$")
+_HIRIST_JOB = re.compile(r"hirist\.tech/j/(?P<slug>[a-z0-9-]+?)-(?P<id>\d+)(?:\.html)?", re.IGNORECASE)
+
+
+def parse_hirist(msg: EmailMessage) -> list[NormalizedJob]:
+    if not msg.html:
+        return []
+    lines = _html_lines(msg.html)
+    texts = [t for t, _ in lines]
+    jobs: list[NormalizedJob] = []
+    for text, link in lines:  # weekly digest
+        m = _HIRIST_DIGEST.match(text)
+        if not m or not link or not (j := _HIRIST_JOB.search(link)):
+            continue
+        # "AST SpaceMobile - GNC Test Engineer (1-3 yrs)" or "Data Scientist - Machine Learning (1-5 yrs)":
+        # the company is not reliably separable, so the whole line is the title.
+        title = re.sub(r"\s*\(\d+\s*-\s*\d+ yrs\)\s*$", "", m.group("rest")).strip()
+        loc = m.group("loc").strip()
+        jobs.append(NormalizedJob(
+            source="hirist_alert", source_job_id=j.group("id"), company_name="hirist.tech listing",
+            title=title, description_text=f"Experience: {m.group('lo')} - {m.group('hi')} years",  # the listing's range
+            location=loc, locations=[x.strip() for x in loc.split("/")],
+            posted_at=None, posted_at_kind="not_given",
+            apply_url=f"https://www.hirist.tech/j/{j.group('slug')}-{j.group('id')}.html",
+            extra={"gmail_id": msg.id, "country": "IN", "experience_text": f"{m.group('lo')}-{m.group('hi')} yrs"},
+        ))
+    if jobs:
+        return jobs
+    # Single job: title, company, tags, "Location: ...", "Experience: a - b Years", then the posting.
+    try:
+        exp_i = next(i for i, t in enumerate(texts) if re.match(r"^Experience:\s*\d", t))
+        loc_i = next(i for i, t in enumerate(texts) if t.startswith("Location:"))
+        fit_i = max(i for i, t in enumerate(texts) if re.search(r"looks like a strong fit|is hiring talent like you", t))
+    except (StopIteration, ValueError):
+        return []
+    head = [t for t in texts[fit_i + 1: loc_i]
+            if not re.match(r"^(opportunity at|get app|hi |hello )", t, re.IGNORECASE)]
+    if len(head) < 2:
+        return []
+    title, company = head[0], head[1]
+    location = texts[loc_i].split(":", 1)[1].strip()
+    body_start = next((i + 1 for i, t in enumerate(texts) if t.startswith("Early applicants")), exp_i + 1)
+    body_end = next((i for i, t in enumerate(texts) if i > body_start and
+                     re.match(r"^(Get notified|Best regards|You are receiving|Copyright)", t)), len(texts))
+    body = "\n".join([texts[exp_i], *texts[body_start:body_end]])
+    apply_link = next((lk for _, lk in lines if lk and "jobId=" in lk), None)
+    job_id = re.search(r"jobId=(\d+)", apply_link).group(1) if apply_link else None
+    if not job_id:
+        import hashlib
+        job_id = "h" + hashlib.sha256(f"{company}|{title}".lower().encode()).hexdigest()[:16]
+    return [NormalizedJob(
+        source="hirist_email", source_job_id=job_id, company_name=company, title=title,
+        description_text=body, location=location, locations=[x.strip() for x in location.split("/")],
+        posted_at=None, posted_at_kind="not_given",
+        apply_url=f"https://www.hirist.tech/one-click-apply?jobId={job_id}" if job_id.isdigit() else "https://www.hirist.tech/",
+        extra={"gmail_id": msg.id, "country": "IN"},
+    )]
+
+
 PARSERS: dict[str, Callable[[EmailMessage], list[NormalizedJob]]] = {
     "linkedin.com": parse_linkedin,
     "hi.wellfound.com": parse_wellfound,
     "internshala.com": parse_internshala,
     "instahyre.com": parse_instahyre,
+    "indeed.com": parse_indeed,
+    "hirist.tech": parse_hirist,
 }
 
 

@@ -120,7 +120,8 @@ def evaluate(
         signals.append(Signal("official_ats_board", 40,
                               f"posted on the company's own {KNOWN_ATS_HOSTS.get(apply_domain or '', source.title())} board"))
     platform = {"linkedin_alert": "LinkedIn", "wellfound_alert": "Wellfound",
-                "internshala_alert": "Internshala", "instahyre_alert": "Instahyre"}.get(source)
+                "internshala_alert": "Internshala", "instahyre_alert": "Instahyre",
+                "indeed_alert": "Indeed", "hirist_alert": "hirist.tech", "hirist_email": "hirist.tech"}.get(source)
     if platform:
         signals.append(Signal("job_platform", 10, f"listed on {platform} (the platform screens employers, not a guarantee)"))
     if in_yc_directory:

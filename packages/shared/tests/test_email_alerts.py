@@ -197,8 +197,9 @@ def test_linkedin_entry_level_filter_is_never_proof():
     assert alert("keywords=ai%20engineer&f_E=1%2C2").extra["entry_level_alert"] is True  # kept for information
 
 
-def test_snippets_never_confirm_entry_level_but_can_reject():
-    """2026-11-08 rule: entry-level only when the whole posting was read. Email alerts carry snippets."""
+def test_snippets_confirm_only_with_explicit_employer_text_and_can_reject():
+    """2026-11-08 rule: entry-level only when the whole posting was read. Refined 2026-11-14: a snippet
+    quoting the employer's own fresher wording ("Freshers welcome", "0 years") counts; vaguer text doesn't."""
     from scout_core.filters.fresher import FresherRules
     from scout_core.pipeline.evaluate import evaluate_job
     from scout_core.types import NormalizedJob
@@ -209,12 +210,17 @@ def test_snippets_never_confirm_entry_level_but_can_reject():
                              apply_url="https://example.com/job/1")
 
     rules = FresherRules()
-    # A snippet that sounds fresher-friendly is not enough: snippet-only jobs are left out entirely.
+    # Vague or weak snippets are not enough: those jobs are left out entirely.
     for src, desc, kind in (("internshala_alert", "Job offer upto ₹6LPA post internship", "Intern"),
-                            ("instahyre_alert", "Freshers welcome. Python, LLM.", None),
-                            ("wellfound_alert", "0 years of experience required.", None)):
+                            ("instahyre_alert", "Junior role. Python, LLM.", None),
+                            ("wellfound_alert", "Build agents with our team.", None)):
         ev = evaluate_job(job(src, desc, employment_type=kind), fresher_rules=rules)
         assert not ev.keep and "couldn't be read" in ev.fresher.reasons[0], src
+    # The employer's explicit words do count.
+    for src, desc in (("instahyre_alert", "Freshers welcome. Python, LLM."),
+                      ("wellfound_alert", "0 years of experience required.")):
+        ev = evaluate_job(job(src, desc), fresher_rules=rules)
+        assert ev.keep and not ev.fresher.experience_unclear and "quoted from the posting" in ev.fresher.reasons[0], src
     # A snippet can still reject.
     assert evaluate_job(job("wellfound_alert", "4 years of experience required.")).keep is False
     # A full company-board posting that says so passes the rules, then waits for the second reader
@@ -293,3 +299,80 @@ def test_alert_title_without_proof_is_still_left_out():
                   "Graduate Research Assistant - NLP"):
         ev = evaluate_job(_alert_job(title))
         assert not ev.keep, title
+
+
+# ------------------------------------------------------------------ Indeed / hirist (2026-11-14, invented content)
+
+INDEED_DIGEST = """Indeed Job Alert
+3 new machine learning fresher vacancies
+Jobs 1-3 of 3 new jobs
+See matching results on Indeed: https://in.indeed.com/jobs?q=machine+learning+fresher&from=ja
+ML Engineer
+Example Tech - Coimbatore, Tamil Nadu
+₹15,000 - ₹18,000 a month
+Easily apply
+Experience:* Fresher to 1 Year. Good understanding of Python and machine learning.
+Just posted
+https://in.indeed.com/rc/clk/dl?jk=3b954430d4016425&from=ja&qd=x
+AI Engineer
+Sample Labs - Hyderabad, Telangana
+Build LLM features for enterprise customers.
+2 days ago
+https://in.indeed.com/rc/clk/dl?jk=4db3dc6738c57e9f&from=ja&qd=y
+Machine Learning Engineer
+Demo Corp - Bengaluru, Karnataka
+3+ years of experience building machine learning models in production.
+30+ days ago
+https://in.indeed.com/rc/clk/dl?jk=0b0b7c9b66fdd38f&from=ja
+Do not share this email
+Manage job alerts: https://subscriptions.indeed.com?token=x
+"""
+
+
+def test_indeed_digest_format_and_snippet_evidence():
+    _, jobs = parse_alert(_msg("Indeed <donotreply@jobalert.indeed.com>", "ML Engineer at Example Tech", text=INDEED_DIGEST))
+    assert [(j.title, j.company_name, j.location) for j in jobs] == [
+        ("ML Engineer", "Example Tech", "Coimbatore, Tamil Nadu"),
+        ("AI Engineer", "Sample Labs", "Hyderabad, Telangana"),
+        ("Machine Learning Engineer", "Demo Corp", "Bengaluru, Karnataka")]
+    a, b, c = jobs
+    assert a.apply_url == "https://in.indeed.com/viewjob?jk=3b954430d4016425"  # no tracking link stored
+    assert a.posted_at == NOW and b.posted_at.day == NOW.day - 2
+    # The employer's own words in the snippet confirm a fresher role; no proof = left out; 3+ years = dropped.
+    ea, eb, ec = (evaluate_job(j) for j in jobs)
+    assert ea.keep and not ea.fresher.experience_unclear and "quoted from the posting" in ea.fresher.reasons[0]
+    assert not eb.keep and "only a title or snippet" in eb.drop_reasons[0]
+    assert not ec.keep and "3+ years" in ec.drop_reasons[0]
+
+
+HIRIST_SINGLE = """<html><body><div>Get App</div><div>Hi Test User,</div>
+<div>Opportunity at Acme AI looks like a strong fit.</div>
+<div>AI Engineer</div><div>Acme AI</div><div>Python</div><div>Location: Bangalore/Pune</div>
+<div>Experience: 0 - 1 Years</div>
+<div><a href="https://postoffice.hirist.tech/CL0/https:%2F%2Fwww.hirist.tech%2Fone-click-apply%3FjobId=1626000/1/x">Apply Now</a></div>
+<div>Early applicants are 3x more likely to get noticed</div>
+<div>We are hiring freshers from the 2026 batch to build LLM agents.</div>
+<div>Best regards, hirist</div></body></html>"""
+
+HIRIST_DIGEST = """<html><body>Hello Test,<br>
+06/11 - <a href="https://postoffice.hirist.tech/CL0/https:%2F%2Fwww.hirist.tech%2Fj%2Facme-ai-engineer-1626001.html/1/x">Acme - AI Engineer (0-1 yrs)</a> - Bangalore<br>
+05/11 - <a href="https://postoffice.hirist.tech/CL0/https:%2F%2Fwww.hirist.tech%2Fj%2Fdata-scientist-1626002.html/1/x">Data Scientist - NLP (2-5 yrs)</a> - Chennai<br>
+</body></html>"""
+
+
+def test_hirist_single_job_is_a_full_posting():
+    _, jobs = parse_alert(_msg('"hirist.tech" <info@hirist.tech>', "Hiring | AI Engineer at Acme AI", html=HIRIST_SINGLE))
+    (j,) = jobs
+    assert (j.title, j.company_name, j.locations, j.source_job_id) == ("AI Engineer", "Acme AI", ["Bangalore", "Pune"], "1626000")
+    assert j.source == "hirist_email" and "2026 batch" in j.description_text
+    ev = evaluate_job(j)  # judged like a board job: kept, then waits for the second reader
+    assert ev.keep and ev.fresher.experience_unclear
+
+
+def test_hirist_digest_reads_the_listed_experience_range():
+    _, jobs = parse_alert(_msg('"hirist.tech" <info@hirist.tech>', "10+ Matching Jobs", html=HIRIST_DIGEST))
+    assert [(j.title, j.location, j.source_job_id) for j in jobs] == [
+        ("Acme - AI Engineer", "Bangalore", "1626001"), ("Data Scientist - NLP", "Chennai", "1626002")]
+    keep, drop = (evaluate_job(j) for j in jobs)
+    assert keep.keep and not keep.fresher.experience_unclear
+    assert not drop.keep and "2-5 years" in drop.drop_reasons[0]
