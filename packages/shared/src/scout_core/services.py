@@ -4,14 +4,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Select, and_, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scout_core.db.models import Application, Job, JobLabel, Notification
 from scout_core.notify.telegram import DigestItem
 from scout_core.runs import audit
-from scout_core.types import ApplicationStatus
+from scout_core.types import TERMINAL_FOR_FEED, ApplicationStatus
 
 # Statuses I can set from the dashboard or Telegram in Phase 1.
 SETTABLE = {ApplicationStatus.DISCOVERED, ApplicationStatus.SKIPPED, ApplicationStatus.APPLIED,
@@ -103,6 +103,26 @@ def salary_text(job: Job) -> str | None:
     return None
 
 
+# 2026-11-14: the same posting arrives as several rows (LinkedIn sends one job under different ids, per city or
+# as a repost; other sites repeat it). Once I skip or apply to one, every copy (same company and title) is
+# hidden, now and when more copies arrive, so nothing I acted on comes back.
+COPY_REASON = "same job as one you already marked"
+
+
+async def hide_copies(session: AsyncSession, job: Job) -> int:
+    result = await session.execute(update(Job).where(
+        Job.company_norm == job.company_norm, Job.title_norm == job.title_norm, Job.id != job.id,
+        Job.status == ApplicationStatus.DISCOVERED, Job.duplicate_of.is_(None),
+    ).values(duplicate_of=job.id, duplicate_reason=COPY_REASON))
+    return result.rowcount or 0
+
+
+async def unhide_copies(session: AsyncSession, job: Job) -> int:
+    result = await session.execute(update(Job).where(
+        Job.duplicate_of == job.id, Job.duplicate_reason == COPY_REASON).values(duplicate_of=None, duplicate_reason=None))
+    return result.rowcount or 0
+
+
 async def set_status(session: AsyncSession, job_id: uuid.UUID, status: ApplicationStatus, *,
                      actor: str, notes: str | None = None) -> Job:
     """Set a job's status. "applied" only ever comes from me (dashboard or my Telegram chat)."""
@@ -130,6 +150,10 @@ async def set_status(session: AsyncSession, job_id: uuid.UUID, status: Applicati
     stmt = insert(Application).values(**values).on_conflict_do_update(
         index_elements=[Application.job_id], set_=update_values)
     await session.execute(stmt)
+    if status in TERMINAL_FOR_FEED:
+        await hide_copies(session, job)
+    elif status == ApplicationStatus.DISCOVERED:  # undo
+        await unhide_copies(session, job)
     audit(session, actor=actor, action="set_status", entity="job", entity_id=str(job_id),
           before={"status": before}, after={"status": status.value})
     await session.commit()

@@ -9,7 +9,7 @@ import { toast } from "sonner"
 import { isTyping } from "@/components/shell/app-shell"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
-import { useJobs, useSetStatus } from "@/lib/queries"
+import { useHiddenJobIds, useJobs, useSetStatus } from "@/lib/queries"
 import type { Job, JobFilters, JobStatus } from "@/lib/types"
 
 import { CardSkeleton, RadarEmpty } from "./empty-state"
@@ -39,7 +39,9 @@ export function TodayView() {
   const effective = useMemo(() => ({ ...filters, q: debouncedQ }), [filters, debouncedQ])
 
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching } = useJobs(effective)
-  const jobs = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data])
+  const hiddenIds = useHiddenJobIds()
+  const jobs = useMemo(() => (data?.pages.flatMap((p) => p.items) ?? []).filter((j) => !hiddenIds.has(j.id)),
+    [data, hiddenIds])
   const first = data?.pages[0]
 
   // "New since last visit": remember the previous visit for this session, then record this one.

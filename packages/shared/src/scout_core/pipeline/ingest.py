@@ -195,6 +195,20 @@ async def store_jobs(
             last_seen_at=now,
         ))
 
+    # Copies of a job I already skipped or applied to (same company and title, any city or site) arrive
+    # hidden, pointing at the job I acted on (2026-11-14).
+    from scout_core.services import COPY_REASON
+    from scout_core.types import TERMINAL_FOR_FEED
+    acted: dict[tuple[str, str], uuid.UUID] = {}
+    company_norms = list({r["company_norm"] for r in rows if not r["duplicate_of"]})
+    for i in range(0, len(company_norms), 500):
+        for r in (await session.execute(select(Job.id, Job.company_norm, Job.title_norm).where(
+                Job.company_norm.in_(company_norms[i:i + 500]), Job.status.in_(TERMINAL_FOR_FEED)))).all():
+            acted.setdefault((r.company_norm, r.title_norm), r.id)
+    for row in rows:
+        if not row["duplicate_of"] and (hit := acted.get((row["company_norm"], row["title_norm"]))):
+            row["duplicate_of"], row["duplicate_reason"] = hit, COPY_REASON
+
     inserted: set[uuid.UUID] = set()
     for i in range(0, len(rows), INSERT_BATCH):
         result = await session.execute(

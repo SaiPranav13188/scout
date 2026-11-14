@@ -81,3 +81,39 @@ test.describe("phone width", () => {
     });
   }
 });
+
+test("Today: jobs skipped quickly one after another never come back (slow saves)", async ({ page, request }) => {
+  // 2026-11-14: a list refresh started by the first click finished before the second click was saved and put
+  // that job back on screen. Saves are slowed here so the refresh always overlaps the next click.
+  await page.route("**/api/jobs/*/status", async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.continue();
+  });
+  await page.goto("/");
+  const titles = ["AI Engineer", "Machine Learning Engineer (Fresher)"];
+  await expect(page.getByText(titles[0], { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  const ids: string[] = [];
+  page.on("request", (r) => {
+    const m = r.url().match(/\/api\/jobs\/([^/]+)\/status$/);
+    if (m && r.method() === "POST") ids.push(m[1]);
+  });
+  const seen: string[] = [];
+  for (const [i, t] of titles.entries()) {
+    const card = page.locator("article", { hasText: t }).first();
+    await card.getByRole("button", { name: "Skip" }).click();
+    if (i < titles.length - 1) await page.waitForTimeout(300);
+  }
+  // Watch the whole time both saves and their refreshes run: a skipped job must not flash back even briefly.
+  for (let n = 0; n < 50; n++) {
+    for (const t of titles) {
+      if (await page.locator("article", { hasText: t }).count()) seen.push(`${t} @ ${n * 100}ms`);
+    }
+    await page.waitForTimeout(100);
+  }
+  expect(seen, "skipped jobs shown again").toEqual([]);
+  // Put the seed back for any later test.
+  for (const id of ids) {
+    await request.post(`${API}/api/jobs/${id}/status`, {
+      headers: { Authorization: `Bearer ${TOKEN}` }, data: { status: "discovered" } });
+  }
+});

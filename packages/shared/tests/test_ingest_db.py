@@ -128,3 +128,33 @@ async def test_duplicates_within_one_batch(session):
     await session.commit()
     assert stats.new == 2 and stats.duplicates == 1
     assert await _count(session, Job.duplicate_of.is_(None)) == 1
+
+
+async def test_skipping_one_copy_hides_every_copy_now_and_later(session):
+    """2026-11-14: LinkedIn sends one posting under several ids (other cities, reposts). Skipping or applying
+    to one hid only that row, so the others kept coming back in the dashboard and Telegram."""
+    from scout_core.services import COPY_REASON, feed_query, set_status
+    company = await get_or_create_company(session, name="Accenture in India", website=None, source="test")
+
+    def alert(jid, city):
+        return NormalizedJob(source="linkedin_alert", source_job_id=jid, company_name="Accenture in India",
+                             title="AI / ML Engineer", locations=[city], apply_url=f"https://www.linkedin.com/jobs/view/{jid}/")
+
+    await store_jobs(session, [alert("1", "Bengaluru"), alert("2", "Noida"), alert("3", "Hyderabad")], company=company, **RULES)
+    await session.commit()
+    in_feed = lambda: session.scalars(feed_query().where(Job.status == ApplicationStatus.DISCOVERED)  # noqa: E731
+                                      .with_only_columns(Job.source_job_id))
+    assert sorted((await in_feed()).all()) == ["1", "2", "3"]
+
+    first = await session.scalar(select(Job).where(Job.source_job_id == "1"))
+    await set_status(session, first.id, ApplicationStatus.SKIPPED, actor="me")
+    assert (await in_feed()).all() == []
+    # A copy arriving after the click is hidden too, pointing at the job I skipped.
+    await store_jobs(session, [alert("4", "Pune")], company=company, **RULES)
+    await session.commit()
+    late = await session.scalar(select(Job).where(Job.source_job_id == "4"))
+    assert late.duplicate_of == first.id and late.duplicate_reason == COPY_REASON
+    assert (await in_feed()).all() == []
+    # Undo brings back the copies that were hidden because of the click.
+    await set_status(session, first.id, ApplicationStatus.DISCOVERED, actor="me")
+    assert sorted((await in_feed()).all()) == ["1", "2", "3", "4"]
