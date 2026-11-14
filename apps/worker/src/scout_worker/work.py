@@ -667,7 +667,12 @@ async def recheck_feed(apply: bool = False) -> dict:
     stored. Jobs I corrected by hand are left alone. Dry run unless apply=True.
     """
     from scout_core.filters.fresher import Decision, classify
-    from scout_core.pipeline.evaluate import await_second_reading, require_full_posting
+    from scout_core.pipeline.evaluate import (
+        SNIPPET_ONLY,
+        await_second_reading,
+        require_full_posting,
+        title_confirmed,
+    )
     from scout_core.seniority import MARK
     from scout_core.settings_store import load_rules
 
@@ -685,8 +690,9 @@ async def recheck_feed(apply: bool = False) -> dict:
                 if apply:
                     job.description = None
             desc = None if job.description == INVENTED_LINKEDIN_TEXT else job.description
-            v = require_full_posting(job.source, classify(job.title, desc, fresher_rules, job.employment_type), desc)
-            if fresher_rules.second_reading:
+            v = require_full_posting(job.source, classify(job.title, desc, fresher_rules, job.employment_type),
+                                     desc, job.title)
+            if fresher_rules.second_reading and not title_confirmed(v):
                 v = await_second_reading(v)
             if v.decision == Decision.DROP:
                 dropped.append(f"{job.title} @ {job.company_name}: {v.reasons[0]}"[:160])
@@ -699,11 +705,34 @@ async def recheck_feed(apply: bool = False) -> dict:
                 job.experience_min, job.experience_max = v.experience_min, v.experience_max
                 job.experience_unclear, job.fresher_confidence = v.experience_unclear, v.confidence.value
                 job.fresher_reasons = v.reasons
+        # Alert jobs left out only for being a snippet, whose employer-written title now confirms a fresher
+        # role (rule of 2026-11-14). Jobs dropped for anything else (location, scam...) stay out.
+        restored: list[str] = []
+        snippet_only = (await session.scalars(select(Job).where(
+            Job.passed_filters.is_(False), Job.source.like("%\\_alert", escape="\\"),
+            Job.status == ApplicationStatus.DISCOVERED, Job.duplicate_of.is_(None),
+            Job.first_seen_at >= datetime.now(UTC) - timedelta(days=30)))).all()
+        for job in snippet_only:
+            if not job.filter_reasons or not all(str(r).startswith("experience: " + SNIPPET_ONLY)
+                                                 for r in job.filter_reasons):
+                continue
+            desc = None if job.description == INVENTED_LINKEDIN_TEXT else job.description
+            v = require_full_posting(job.source, classify(job.title, desc, fresher_rules, job.employment_type),
+                                     desc, job.title)
+            if v.decision == Decision.DROP or not title_confirmed(v):
+                continue
+            restored.append(f"{job.title} @ {job.company_name}: {v.reasons[0]}"[:160])
+            if apply:
+                job.passed_filters, job.filter_reasons = True, []
+                job.experience_min, job.experience_max = v.experience_min, v.experience_max
+                job.experience_unclear, job.fresher_confidence = False, v.confidence.value
+                job.fresher_reasons = v.reasons
         if apply:
             await session.commit()
         unclear = sum(1 for j in jobs if j.passed_filters and j.experience_unclear) if apply else None
         return {"checked": len(jobs), "invented_text_removed": cleared, "dropped": len(dropped),
-                "now_experience_unclear": unclear, "examples": dropped[:15], "applied": apply}
+                "now_experience_unclear": unclear, "examples": dropped[:15],
+                "restored_title_confirmed": len(restored), "restored": restored[:40], "applied": apply}
 
 
 async def resume_backfill(pdf_path: str, apply: bool = False) -> dict:

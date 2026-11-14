@@ -194,3 +194,17 @@ def test_next_runs():
     assert n["daily_digest"].date().isoformat() == "2026-11-08" and n["daily_digest"].hour == 8
     assert n["evening_summary"].date().isoformat() == "2026-11-07" and n["evening_summary"].hour == 20
     assert n["discovery"].date().isoformat() == "2026-11-08" and n["discovery"].hour == 3  # Sunday
+
+
+def test_gmail_has_its_own_faster_interval():
+    """2026-11-14: alert emails every 10 min, slow board checks every 30 min; Gmail runs first."""
+    from datetime import UTC, datetime
+
+    from scout_core.schedule import due_tasks
+    from scout_core.settings_store import DEFAULTS
+    now = datetime(2026, 11, 14, 4, 47, tzinfo=UTC)
+    due = {d.task: d.slot_key for d in due_tasks(now, DEFAULTS["schedule"])}
+    assert due["gmail"] == "gmail:2026-11-14T04:40"
+    assert due["ingest"] == "ingest:2026-11-14T04:30"
+    assert due["scoring"] == "scoring:2026-11-14T04:40"
+    assert [d.task for d in due_tasks(now, DEFAULTS["schedule"])][:2] == ["gmail", "ingest"]

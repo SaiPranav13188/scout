@@ -7,6 +7,7 @@
   uv run python -m scout_worker.cli tick                     # run everything that is due (cloud cron)
   uv run python -m scout_worker.cli tick --skip discovery
   uv run python -m scout_worker.cli tick --only discovery
+  uv run python -m scout_worker.cli loop 340                 # tick every 10 min for 340 min + answer Telegram (GitHub Actions)
   uv run python -m scout_worker.cli gmail-connect            # one-time Google sign-in (read-only)
   uv run python -m scout_worker.cli gmail-senders            # which job-alert senders are in the inbox
   uv run python -m scout_worker.cli resume-parse private/resume.pdf
@@ -217,6 +218,10 @@ def main() -> None:
         results, failed = asyncio.run(work.run_tick(only=only, skip=skip))
         print(json.dumps(results, indent=2, default=str))
         sys.exit(1 if failed else 0)
+    elif cmd == "loop":
+        from scout_worker.loop import run_loop
+        failures = asyncio.run(run_loop(float(args[0]) if args else 340, telegram="--no-telegram" not in args))
+        print(f"loop finished, {failures} failed tick(s)")
     elif cmd == "alerts":
         print(json.dumps(asyncio.run(work.run_instant_alerts()), indent=2, default=str))
     elif cmd == "gmail-connect":

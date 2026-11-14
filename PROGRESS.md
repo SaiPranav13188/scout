@@ -1,5 +1,26 @@
 # Progress
 
+## Outage and fixes (2026-11-14)
+
+Nothing reached me for about a week. Found on the live system:
+
+| Cause | Since | Fix |
+|---|---|---|
+| Render suspended the API: "Monthly Quota Exceeded". All 10 free services in the Render workspace share 750 h/month, and the 10-minute Postgres ping kept Scout awake 24/7. Ticks, dashboard API and Telegram buttons all stopped; GitHub's own schedule ran only a few times a day | 2026-11-13 12:21 UTC | Scheduler moved to GitHub Actions: one run stays up ~5.5 h, ticking every 10 min and long-polling Telegram for commands/buttons (`cli loop`); triggered hourly, next run queued by the concurrency group. Postgres ping removed (`setup-timer --remove`) so Render can sleep again |
+| Gmail token rejected by Google (OAuth app in "Testing" mode: refresh tokens expire after 7 days) | 2026-11-13 | **Needs me:** publish the OAuth app to production, then `gmail-connect` once |
+| Gmail never ran on Render ticks (`ENCRYPTION_KEY` not set there) | always | Ticks no longer run on Render |
+| Gmail shared the board-check interval, and a board check takes ~10 min on GitHub | — | Gmail every 10 min and first in each tick; boards every 30 min |
+| LinkedIn's newer email layout shifted every field (search header with raw HTML became the title) | 2026-11-12 | Lines with HTML are skipped; test with that layout |
+| "Serilingampalli" (Hyderabad) read as abroad | — | Tech-hub localities and more cities added |
+
+Rule change: an alert job whose **employer-written title** says fresher / trainee / entry level / new grad /
+campus / 0-1 years / batch now counts as evidence (weak words like Associate, Junior, Engineer I still don't).
+Replayed on 30 days of real alerts: 10 restored, none in AI, so it adds little. The real gap: **100 AI-field
+LinkedIn alert jobs in 30 days** ("AI Engineer @ Teradata"...) can't be judged because Scout doesn't read
+LinkedIn pages. Getting their full text needs an aggregator API that carries it (JSearch; key required).
+Workday career sites were tried and dropped: nearly all return Cloudflare 521 to automated requests.
+Boards added: Ema, DevRev, Cloudflare, Bureau, Coursera (probed ~200 Indian companies; most aren't on Greenhouse/Lever/Ashby).
+
 ## Phase 1: Foundation + discovery (in progress, code complete locally)
 
 Last updated: 2026-11-06

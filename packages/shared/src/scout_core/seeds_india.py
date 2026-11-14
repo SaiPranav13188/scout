@@ -58,4 +58,11 @@ INDIA_BOARDS: list[tuple[str, str, str]] = [
     ("Scale AI", "greenhouse", "scaleai"),
     ("Vercel", "greenhouse", "vercel"),
     ("Sardine", "ashby", "sardine"),
+    # Added 2026-11-14 after probing ~200 Indian tech/AI companies on the three ATSs (most big Indian
+    # employers use other systems); each had live jobs in Indian cities.
+    ("Ema", "ashby", "ema"),
+    ("DevRev", "greenhouse", "devrev"),
+    ("Cloudflare", "greenhouse", "cloudflare"),
+    ("Bureau", "ashby", "bureau"),
+    ("Coursera", "greenhouse", "coursera"),
 ]

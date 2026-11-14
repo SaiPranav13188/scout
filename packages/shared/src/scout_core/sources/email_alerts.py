@@ -60,6 +60,11 @@ _LI_CHROME = re.compile(
     r"jobs in [^\n]{1,60}$|your job alert for)|https?://",
     re.IGNORECASE)
 
+# Newer layout (seen 2026-11-12): the plain-text part repeats the saved search as a header with raw HTML,
+# e.g. '<strong class="font-bold" ...>ai engineer</strong> jobs in Hyderabad', above the first job. That
+# line shifted every field by one (title = the search, company = the real title, location = the company).
+_LI_HTML = re.compile(r"</?[a-z][^>]*>", re.IGNORECASE)
+
 _LI_BADGES = re.compile(
     r"^(apply with resume|easy apply|actively recruiting|be an early applicant|promoted|"
     r"\d+ (connections?|school alum|alumni)|.*connections? work here|.*alumni work here|.*school alumni)",
@@ -106,7 +111,8 @@ def parse_linkedin(msg: EmailMessage) -> list[NormalizedJob]:
             continue
         job_id = m.group(1)
         lines = [ln.strip() for ln in block[: m.start()].splitlines() if ln.strip()]
-        lines = [ln for ln in lines if not _LI_CHROME.search(ln) and not _LI_BADGES.match(ln)]
+        lines = [ln for ln in lines
+                 if not _LI_CHROME.search(ln) and not _LI_BADGES.match(ln) and not _LI_HTML.search(ln)]
         if len(lines) < 2:
             continue
         title, company = lines[0], lines[1]

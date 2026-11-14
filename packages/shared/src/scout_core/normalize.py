@@ -77,6 +77,20 @@ INDIA_PLACES = {
     "mysuru": "mysuru", "mysore": "mysuru", "nagpur": "nagpur", "bhubaneswar": "bhubaneswar",
     "vadodara": "vadodara", "visakhapatnam": "visakhapatnam", "vizag": "visakhapatnam",
     "lucknow": "lucknow", "surat": "surat", "mangaluru": "mangaluru", "mangalore": "mangaluru",
+    # Tech-hub localities that LinkedIn / Workday give instead of the city ("Serilingampalli" was read as
+    # abroad, 2026-11-14).
+    "serilingampalli": "hyderabad", "serilingampally": "hyderabad", "gachibowli": "hyderabad",
+    "hitec city": "hyderabad", "hitech city": "hyderabad", "madhapur": "hyderabad", "kondapur": "hyderabad",
+    "nanakramguda": "hyderabad", "rangareddy": "hyderabad", "ranga reddy": "hyderabad",
+    "whitefield": "bengaluru", "electronic city": "bengaluru", "koramangala": "bengaluru",
+    "hsr layout": "bengaluru", "bellandur": "bengaluru", "marathahalli": "bengaluru",
+    "hinjewadi": "pune", "magarpatta": "pune", "kharadi": "pune", "powai": "mumbai", "andheri": "mumbai",
+    "sholinganallur": "chennai", "guindy": "chennai", "taramani": "chennai", "perungudi": "chennai",
+    "faridabad": "delhi", "ghaziabad": "delhi",
+    "vijayawada": "vijayawada", "warangal": "warangal", "tirupati": "tirupati", "guntur": "guntur",
+    "bhopal": "bhopal", "patna": "patna", "ranchi": "ranchi", "dehradun": "dehradun", "kanpur": "kanpur",
+    "nashik": "nashik", "rajkot": "rajkot", "raipur": "raipur", "madurai": "madurai", "vellore": "vellore",
+    "hubli": "hubballi", "hubballi": "hubballi", "belagavi": "belagavi", "belgaum": "belagavi",
     # States and union territories (job sites often list only the state).
     "karnataka": "india", "maharashtra": "india", "telangana": "india", "tamil nadu": "india",
     "kerala": "india", "andhra pradesh": "india", "gujarat": "india", "rajasthan": "india",

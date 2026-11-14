@@ -4,6 +4,7 @@ Output is everything the jobs table needs except identity/dedupe, plus a keep/dr
 with human-readable reasons (so "why didn't I see job X?" always has an answer).
 """
 
+import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 
@@ -19,6 +20,7 @@ from scout_core.normalize import (
     title_names_foreign_region,
 )
 from scout_core.sources.ats import country_codes
+from scout_core.text import fold
 from scout_core.trust import TrustLevel, TrustReport, evaluate
 from scout_core.types import NormalizedJob
 
@@ -59,21 +61,47 @@ SNIPPET_ONLY = "only a title or snippet from an email alert; the full posting co
 
 NO_DESCRIPTION = "the job board gave no description to read"
 
+# Alert jobs whose TITLE, written by the employer, says it is a fresher role (2026-11-14). The title is the
+# posting's own text, unlike a site's level filter ("Entry level" on LinkedIn is not evidence: a 6+ years
+# role came through that way on 2026-11-08). Only unambiguous words: "Associate", "Junior", "Engineer I",
+# "L1" and a bare "Graduate" often mean 1-3 years or a research post, so they still don't count.
+STRONG_TITLE_WORDS = (
+    "fresher", "freshers", "entry level", "entry-level", "new grad", "new graduate", "graduate trainee",
+    "graduate engineer trainee", "trainee", "campus", "0-1 year", "0-1 years", "0 to 1 year",
+    "2025 batch", "2026 batch", "2025 graduates", "2026 graduates", "early career",
+)
+TITLE_CONFIRMS = "title written by the employer says '{word}' (alert email: the full posting couldn't be read)"
 
-def require_full_posting(source: str, verdict: FresherVerdict, description: str | None = None) -> FresherVerdict:
+
+def alert_title_word(title: str) -> str | None:
+    t = fold(title)
+    return next((w for w in STRONG_TITLE_WORDS
+                 if re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", t)), None)
+
+
+def require_full_posting(source: str, verdict: FresherVerdict, description: str | None = None,
+                         title: str | None = None) -> FresherVerdict:
     """My rule (2026-11-08): a job is judged only on its WHOLE posting. Email alerts carry a title or a
-    one-line snippet, so their jobs are left out entirely (not even listed as "experience unclear"):
-    a snippet can't show what the posting asks for. A snippet that already asks for experience still
-    gives that as the reason."""
+    one-line snippet, so their jobs are left out (not even listed as "experience unclear"): a snippet
+    can't show what the posting asks for. A snippet that already asks for experience still gives that
+    as the reason. Exception (2026-11-14): the employer's own title says it is a fresher role."""
     if verdict.decision == Decision.DROP:
         return verdict
     if not has_full_posting(source):
+        if title and (word := alert_title_word(title)):
+            return replace(verdict, experience_unclear=False, confidence=Confidence.MEDIUM,
+                           reasons=[TITLE_CONFIRMS.format(word=word),
+                                    *[r for r in verdict.reasons if r != "experience not stated"]])
         reason = SNIPPET_ONLY
     elif not (description or "").strip():  # a board listing with no text at all is just a title
         reason = NO_DESCRIPTION
     else:
         return verdict
     return replace(verdict, decision=Decision.DROP, confidence=Confidence.HIGH, reasons=[reason, *verdict.reasons])
+
+
+def title_confirmed(verdict: FresherVerdict) -> bool:
+    return bool(verdict.reasons) and verdict.reasons[0].startswith("title written by the employer")
 
 
 AWAITING_SECOND_READING = "rules found it entry-level; waiting for the full-text check"
@@ -105,8 +133,9 @@ def evaluate_job(
             or (job.description_text and remote_restriction(job.description_text))):
         loc = LocationInfo(LocationBucket.REMOTE_RESTRICTED, (), True)
     fresher = classify(job.title, job.description_text, fresher_rules, job.employment_type)
-    fresher = require_full_posting(job.source, fresher, job.description_text)
-    if (fresher_rules or FresherRules()).second_reading:
+    fresher = require_full_posting(job.source, fresher, job.description_text, job.title)
+    # A second reader needs a whole posting; an alert job confirmed by its title has nothing more to read.
+    if (fresher_rules or FresherRules()).second_reading and not title_confirmed(fresher):
         fresher = await_second_reading(fresher)
     relevance = classify_role(job.title, job.description_text, relevance_rules)
     trust = evaluate(source=job.source, apply_url=job.apply_url, company_website=company_website,

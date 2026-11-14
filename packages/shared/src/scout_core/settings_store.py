@@ -15,7 +15,10 @@ from scout_core.pipeline.evaluate import Preferences
 DEFAULTS: dict[str, Any] = {
     "schedule": {
         "timezone": "Asia/Kolkata",
-        "ingest_interval_minutes": 10,   # how often company job boards are checked
+        # Company boards change slowly and a full check of ~280 boards takes ~10 min on GitHub's runners,
+        # so every 30 min; Gmail alerts (fast, where most fresher jobs arrive) every 10 min (2026-11-14).
+        "ingest_interval_minutes": 30,   # how often company job boards are checked
+        "gmail_interval_minutes": 10,    # how often job-alert emails are read
         "verify_interval_hours": 12,
         "discovery_weekday": 6,          # Sunday (0 = Monday)
         "discovery_time": "03:00",

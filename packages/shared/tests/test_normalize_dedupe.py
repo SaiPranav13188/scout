@@ -116,3 +116,9 @@ def test_contained_title_is_not_same_role():
     from scout_core.normalize import normalize_title
     assert not titles_match(normalize_title("SDE 2 Infra"), normalize_title("Data Engineer (SDE 2)"))
     assert not titles_match("software engineer", "software engineer backend")
+
+
+def test_hyderabad_localities_are_india():
+    from scout_core.normalize import LocationBucket, classify_location
+    for loc in ("Serilingampalli", "Gachibowli, Telangana", "HITEC City", "Whitefield", "Hinjewadi, Pune"):
+        assert classify_location([loc]).bucket == LocationBucket.INDIA, loc

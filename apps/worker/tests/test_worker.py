@@ -34,11 +34,13 @@ def test_digest_due_from_8am_until_evening():
 
 
 def test_ingest_slots_change_every_interval():
-    # Default: every 10 minutes, aligned to UTC.
+    # Defaults (2026-11-14): boards every 30 minutes, alert emails every 10, aligned to UTC (IST is +5:30).
     a = _tasks(_ist(2026, 11, 6, 10, 0))["ingest"]
-    b = _tasks(_ist(2026, 11, 6, 10, 9))["ingest"]
-    c = _tasks(_ist(2026, 11, 6, 10, 10))["ingest"]
+    b = _tasks(_ist(2026, 11, 6, 10, 29))["ingest"]
+    c = _tasks(_ist(2026, 11, 6, 10, 30))["ingest"]
     assert a == b != c
+    g = [_tasks(_ist(2026, 11, 6, 10, m))["gmail"] for m in (0, 9, 10)]
+    assert g[0] == g[1] != g[2]
 
 
 def test_discovery_weekly_slot():

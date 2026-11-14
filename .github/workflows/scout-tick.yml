@@ -1,15 +1,18 @@
-# Every ~10 minutes: check company job boards, send instant alerts, and run any due digest.
+# Scout's scheduler (2026-11-14): one run stays up ~5.5 h, ticking every 10 minutes (Gmail alerts,
+# company boards, scoring, instant alerts, digests) and answering Telegram in between.
+# Render's free API, which used to be the 10-minute timer, was suspended for exceeding the shared
+# monthly quota, and GitHub's own schedule fires only every few hours when busy, so the hourly trigger
+# below just makes sure the next long run is already queued (concurrency group) when this one ends.
 # Schedules come from the `settings` table, so changing them in the dashboard needs no edit here.
 name: Scout tick
 on:
   schedule:
-    # Off the top of the hour, when GitHub's scheduler is busiest (runs can still be delayed).
-    - cron: "4,14,24,34,44,54 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 concurrency:
   group: scout-tick
-  cancel-in-progress: false
+  cancel-in-progress: false   # a new trigger waits (queued) instead of stopping the running loop
 
 permissions:
   contents: read
@@ -17,7 +20,7 @@ permissions:
 jobs:
   tick:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 355   # GitHub's limit is 360
     env:
       ENV: production
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -42,5 +45,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install uv (from PyPI, retried; GitHub release downloads gave 504s)
         run: for i in 1 2 3 4 5; do pipx install "uv==0.13.6" && break; sleep 15; done; uv --version
-      - run: uv sync --frozen --package scout-worker
-      - run: uv run --package scout-worker python -m scout_worker.cli tick --skip discovery
+      # scout-api includes the worker; the loop reuses the API's Telegram command/button handler.
+      - run: uv sync --frozen --package scout-api
+      - run: uv run --package scout-api python -m scout_worker.cli loop 320

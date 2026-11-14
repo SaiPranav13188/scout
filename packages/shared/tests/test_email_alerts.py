@@ -253,3 +253,43 @@ def test_board_job_without_description_is_left_out():
                         description_text=None, locations=["Bengaluru"], apply_url="https://jobs.lever.co/x/1")
     ev = evaluate_job(job)
     assert not ev.keep and "no description" in ev.fresher.reasons[0]
+
+
+def test_linkedin_search_header_with_html_does_not_shift_fields():
+    """2026-11-12 layout: the plain text repeats the search as raw HTML above the first job. It became the
+    title, the real title became the company and the company the location (e.g. 'AI Engineer' @ 'Com Olho')."""
+    text = ('Your job alert for ai engineer in Hyderabad\n'
+            '<strong class="font-bold" style="font-weight: 600;">ai engineer</strong> jobs in Hyderabad\n'
+            'Jr. Machine Learning Engineer\nDigital Roundabout Pte Ltd\nHyderabad\n'
+            'View job: https://www.linkedin.com/comm/jobs/view/333/?trk=x\n\n'
+            '---------------------------------------------------------\n')
+    _, jobs = parse_alert(_msg("LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>", "x", text=text))
+    assert [(j.title, j.company_name, j.location) for j in jobs] == [
+        ("Jr. Machine Learning Engineer", "Digital Roundabout Pte Ltd", "Hyderabad")]
+
+
+def _alert_job(title):
+    from scout_core.types import NormalizedJob
+    return NormalizedJob(source="linkedin_alert", source_job_id=title, company_name="Acme", title=title,
+                         description_text=None, locations=["Hyderabad"],
+                         apply_url="https://www.linkedin.com/jobs/view/1/")
+
+
+def test_alert_title_written_by_employer_can_confirm_fresher():
+    """2026-11-14: the employer's own title ('Freshers', 'Trainee', '0-1 year') is evidence; it is shown
+    without a second reading (there is no fuller text to read)."""
+    for title in ("AI Engineer - Freshers", "Graduate Engineer Trainee - ML", "Machine Learning Engineer (0-1 years)",
+                  "AI Engineer Campus Hire 2026"):
+        ev = evaluate_job(_alert_job(title))
+        assert ev.keep, title
+        assert not ev.fresher.experience_unclear and "title written by the employer" in ev.fresher.reasons[0], title
+
+
+def test_alert_title_without_proof_is_still_left_out():
+    """A bare AI title, weak words ('Associate', 'Junior', 'Engineer I'), or a fresher word next to a
+    seniority word never get through from a title-only alert."""
+    for title in ("AI Engineer", "Associate AI/ML Engineer", "Junior Data Scientist", "AI Developer 1",
+                  "Applied Scientist I", "Senior AI Engineer (Freshers can apply)", "AI Engineer (2-4 years)",
+                  "Graduate Research Assistant - NLP"):
+        ev = evaluate_job(_alert_job(title))
+        assert not ev.keep, title

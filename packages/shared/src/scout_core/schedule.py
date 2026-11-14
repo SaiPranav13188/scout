@@ -28,6 +28,16 @@ def _interval_slot(now: datetime, hours: float, name: str) -> DueTask:
     return DueTask(name, f"{name}:{start.strftime('%Y-%m-%dT%H:%M')}")
 
 
+def _ingest_hours(schedule: dict) -> float:
+    minutes = schedule.get("ingest_interval_minutes")
+    return minutes / 60 if minutes else schedule.get("ingest_interval_hours", 4)
+
+
+def _gmail_hours(schedule: dict) -> float:
+    minutes = schedule.get("gmail_interval_minutes")
+    return minutes / 60 if minutes else _ingest_hours(schedule)
+
+
 def due_tasks(now: datetime, schedule: dict, *, paused: bool = False) -> list[DueTask]:
     """All slots that should have run by `now`. Caller filters out slots already done."""
     tz = ZoneInfo(schedule.get("timezone", "Asia/Kolkata"))
@@ -35,11 +45,11 @@ def due_tasks(now: datetime, schedule: dict, *, paused: bool = False) -> list[Du
     due: list[DueTask] = []
 
     if not paused:
-        minutes = schedule.get("ingest_interval_minutes")
-        hours = minutes / 60 if minutes else schedule.get("ingest_interval_hours", 4)
+        hours = _ingest_hours(schedule)
+        # Gmail first: it is quick and carries most fresher jobs; a slow board check must not delay it.
+        due.append(_interval_slot(now, _gmail_hours(schedule), "gmail"))
         due.append(_interval_slot(now, hours, "ingest"))
-        due.append(_interval_slot(now, hours, "gmail"))
-        due.append(_interval_slot(now, hours, "scoring"))
+        due.append(_interval_slot(now, min(hours, _gmail_hours(schedule)), "scoring"))
         due.append(_interval_slot(now, schedule["verify_interval_hours"], "verify"))
 
         disc_day = int(schedule.get("discovery_weekday", 6))
@@ -77,8 +87,7 @@ def next_runs(now: datetime, schedule: dict) -> dict[str, datetime]:
     every 10 minutes, so a task runs on the first tick at or after this time."""
     tz = ZoneInfo(schedule.get("timezone", "Asia/Kolkata"))
     local = now.astimezone(tz)
-    minutes = schedule.get("ingest_interval_minutes")
-    hours = minutes / 60 if minutes else schedule.get("ingest_interval_hours", 4)
+    hours = _ingest_hours(schedule)
 
     def next_interval(h: float) -> datetime:
         seconds = max(1, int(h * 3600))
@@ -93,7 +102,8 @@ def next_runs(now: datetime, schedule: dict) -> dict[str, datetime]:
                             _hhmm(schedule["discovery_time"]), tz)
     if disc <= local:
         disc += timedelta(days=7)
-    out = {name: next_interval(hours) for name in ("ingest", "gmail", "scoring")}
+    out = {"ingest": next_interval(hours), "gmail": next_interval(_gmail_hours(schedule)),
+           "scoring": next_interval(min(hours, _gmail_hours(schedule)))}
     out["verify"] = next_interval(schedule["verify_interval_hours"])
     out["discovery"] = disc.astimezone(UTC)
     out["daily_digest"] = next_daily(schedule["daily_digest_time"])
