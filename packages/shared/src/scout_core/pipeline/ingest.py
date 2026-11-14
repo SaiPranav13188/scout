@@ -216,6 +216,11 @@ async def store_jobs(
             .on_conflict_do_nothing(constraint="uq_jobs_source_id").returning(Job.id))
         inserted.update(result.scalars().all())
 
+    # One job per company and title in the feed, whatever city or id it was listed under (2026-11-14).
+    if inserted:
+        from scout_core.services import collapse_copies
+        stats.duplicates += await collapse_copies(session, list({r["company_norm"] for r in rows}))
+
     for row, (_, ev, _) in zip(rows, fresh, strict=True):
         if row["id"] not in inserted:
             stats.seen_again += 1  # another worker inserted it first

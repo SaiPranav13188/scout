@@ -107,6 +107,26 @@ def salary_text(job: Job) -> str | None:
 # as a repost; other sites repeat it). Once I skip or apply to one, every copy (same company and title) is
 # hidden, now and when more copies arrive, so nothing I acted on comes back.
 COPY_REASON = "same job as one you already marked"
+SAME_JOB_REASON = "same job listed again (another city, site or id)"
+
+
+_COLLAPSE_SQL = """
+    update jobs j set duplicate_of = k.keep_id, duplicate_reason = :reason
+    from (select company_norm, title_norm, (array_agg(id order by first_seen_at, id))[1] as keep_id
+          from jobs where duplicate_of is null and status = 'discovered' and passed_filters
+            and (:all or company_norm = any(:c))
+          group by 1, 2 having count(*) > 1) k
+    where j.company_norm = k.company_norm and j.title_norm = k.title_norm and j.id <> k.keep_id
+      and j.duplicate_of is null and j.status = 'discovered' and j.passed_filters"""
+
+
+async def collapse_copies(session: AsyncSession, company_norms: list[str] | None = None) -> int:
+    """Waiting jobs with the same company and title are one job: keep the first seen, hide the rest
+    (LinkedIn lists one posting per city and under several ids; other sites repeat it)."""
+    from sqlalchemy import text
+    result = await session.execute(text(_COLLAPSE_SQL), {
+        "reason": SAME_JOB_REASON, "all": company_norms is None, "c": company_norms or []})
+    return result.rowcount or 0
 
 
 async def hide_copies(session: AsyncSession, job: Job) -> int:
@@ -152,8 +172,9 @@ async def set_status(session: AsyncSession, job_id: uuid.UUID, status: Applicati
     await session.execute(stmt)
     if status in TERMINAL_FOR_FEED:
         await hide_copies(session, job)
-    elif status == ApplicationStatus.DISCOVERED:  # undo
+    elif status == ApplicationStatus.DISCOVERED:  # undo: copies come back, still listed as one job
         await unhide_copies(session, job)
+        await collapse_copies(session, [job.company_norm])
     audit(session, actor=actor, action="set_status", entity="job", entity_id=str(job_id),
           before={"status": before}, after={"status": status.value})
     await session.commit()
@@ -192,8 +213,10 @@ async def finish_notification(session: AsyncSession, notification_id: uuid.UUID,
 
 
 async def digest_items(session: AsyncSession, *, since: datetime, limit: int) -> tuple[list[DigestItem], int]:
-    """New feed jobs since `since`, newest first, ranked by relevance. Excludes jobs I acted on."""
-    base = visible_feed_query().where(Job.first_seen_at >= since, Job.status == ApplicationStatus.DISCOVERED)
+    """New feed jobs since `since`, newest first, ranked by relevance. Excludes jobs I acted on and jobs
+    Telegram already sent me (instant alerts): every job is suggested once (2026-11-14)."""
+    base = visible_feed_query().where(Job.first_seen_at >= since, Job.status == ApplicationStatus.DISCOVERED,
+                                      Job.notified_at.is_(None))
     total = await session.scalar(select(func.count()).select_from(base.subquery()))
     rows = (await session.scalars(base.order_by(
         Job.relevance_score.desc(), func.coalesce(Job.posted_at, Job.first_seen_at).desc()).limit(limit))).all()

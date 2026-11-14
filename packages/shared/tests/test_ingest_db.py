@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from scout_core.db.models import CompanyWatchlist, Job
 from scout_core.filters.fresher import FresherRules
@@ -140,11 +140,15 @@ async def test_skipping_one_copy_hides_every_copy_now_and_later(session):
         return NormalizedJob(source="linkedin_alert", source_job_id=jid, company_name="Accenture in India",
                              title="AI / ML Engineer", locations=[city], apply_url=f"https://www.linkedin.com/jobs/view/{jid}/")
 
-    await store_jobs(session, [alert("1", "Bengaluru"), alert("2", "Noida"), alert("3", "Hyderabad")], company=company, **RULES)
+    await store_jobs(session, [alert("1", "Bengaluru")], company=company, **RULES)
     await session.commit()
     in_feed = lambda: session.scalars(feed_query().where(Job.status == ApplicationStatus.DISCOVERED)  # noqa: E731
                                       .with_only_columns(Job.source_job_id))
-    assert sorted((await in_feed()).all()) == ["1", "2", "3"]
+    # A copy that slipped through as its own row (stored before copies were collapsed at ingest).
+    await store_jobs(session, [alert("2", "Noida")], company=company, **RULES)
+    await session.execute(update(Job).where(Job.source_job_id == "2").values(duplicate_of=None, duplicate_reason=None))
+    await session.commit()
+    assert sorted((await in_feed()).all()) == ["1", "2"]
 
     first = await session.scalar(select(Job).where(Job.source_job_id == "1"))
     await set_status(session, first.id, ApplicationStatus.SKIPPED, actor="me")
@@ -155,6 +159,42 @@ async def test_skipping_one_copy_hides_every_copy_now_and_later(session):
     late = await session.scalar(select(Job).where(Job.source_job_id == "4"))
     assert late.duplicate_of == first.id and late.duplicate_reason == COPY_REASON
     assert (await in_feed()).all() == []
-    # Undo brings back the copies that were hidden because of the click.
+    # Undo brings the job back, listed once (its copies stay folded into it).
     await set_status(session, first.id, ApplicationStatus.DISCOVERED, actor="me")
-    assert sorted((await in_feed()).all()) == ["1", "2", "3", "4"]
+    assert (await in_feed()).all() == ["1"]
+
+
+async def test_same_job_in_several_cities_is_listed_once(session):
+    """2026-11-14: 'Applied Scientist I, CMT - Amazon' showed twice (Chennai and Bengaluru)."""
+    from scout_core.services import SAME_JOB_REASON, feed_query
+    company = await get_or_create_company(session, name="Amazon", website=None, source="test")
+
+    def alert(jid, city):
+        return NormalizedJob(source="linkedin_alert", source_job_id=jid, company_name="Amazon",
+                             title="Applied Scientist I, CMT", locations=[city], apply_url=f"https://www.linkedin.com/jobs/view/{jid}/")
+
+    await store_jobs(session, [alert("1", "Chennai")], company=company, **RULES)
+    await session.commit()
+    await store_jobs(session, [alert("2", "Bengaluru"), alert("3", "Hyderabad")], company=company, **RULES)
+    await session.commit()
+    shown = (await session.scalars(feed_query().where(Job.status == ApplicationStatus.DISCOVERED)
+                                   .with_only_columns(Job.source_job_id))).all()
+    assert shown == ["1"]
+    hidden = (await session.scalars(select(Job).where(Job.source_job_id.in_(["2", "3"])))).all()
+    assert {j.duplicate_reason for j in hidden} == {SAME_JOB_REASON}
+
+
+async def test_digest_never_repeats_a_job_telegram_already_sent(session):
+    from datetime import timedelta
+
+    from scout_core.services import digest_items
+    company = await get_or_create_company(session, name="Acme", website=None, source="test")
+    await store_jobs(session, [_job(title="AI Engineer"), _job(source_job_id="a2", title="ML Engineer",
+                                                               apply_url="https://jobs.lever.co/acme/a2")],
+                     company=company, **RULES)
+    await session.commit()
+    sent = await session.scalar(select(Job).where(Job.title == "AI Engineer"))
+    sent.notified_at = datetime.now(UTC)
+    await session.commit()
+    items, total = await digest_items(session, since=datetime.now(UTC) - timedelta(hours=24), limit=10)
+    assert [i.title for i in items] == ["ML Engineer"] and total == 1
